@@ -30,20 +30,21 @@ namespace x {
         }
 
     private:
-        GLFWwindow* _window              = nullptr;
-        VkInstance _instance             = VK_NULL_HANDLE;
-        VkPhysicalDevice _physicalDevice = VK_NULL_HANDLE;
-        VkDevice _device                 = VK_NULL_HANDLE;
-        VkQueue _graphicsQueue           = VK_NULL_HANDLE;
-        VkSurfaceKHR _surface            = VK_NULL_HANDLE;
-        VkQueue _presentQueue            = VK_NULL_HANDLE;
-
-        const std::vector<cstr> _validationLayers = {"VK_LAYER_KHRONOS_validation"};
 #ifdef NDEBUG
         const bool _enableValidationLayers = false;
 #else
         const bool _enableValidationLayers = true;
 #endif
+
+        GLFWwindow* _window                       = nullptr;
+        VkInstance _instance                      = VK_NULL_HANDLE;
+        VkPhysicalDevice _physicalDevice          = VK_NULL_HANDLE;
+        VkDevice _device                          = VK_NULL_HANDLE;
+        VkQueue _graphicsQueue                    = VK_NULL_HANDLE;
+        VkSurfaceKHR _surface                     = VK_NULL_HANDLE;
+        VkQueue _presentQueue                     = VK_NULL_HANDLE;
+        const std::vector<cstr> _validationLayers = {"VK_LAYER_KHRONOS_validation"};
+        const std::vector<cstr> _deviceExtensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
 
         struct QueueFamilyIndices {
             std::optional<u32> graphicsFamily;
@@ -57,6 +58,52 @@ namespace x {
                 return {graphicsFamily.value(), presentFamily.value()};
             }
         };
+
+        struct SwapChainSupportInfo {
+            VkSurfaceCapabilitiesKHR capabilities;
+            std::vector<VkSurfaceFormatKHR> formats;
+            std::vector<VkPresentModeKHR> presentModes;
+        };
+
+        SwapChainSupportInfo QuerySwapChainSupport(const VkPhysicalDevice device) const {
+            SwapChainSupportInfo info = {};
+            vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, _surface, &info.capabilities);
+
+            u32 fmtCount;
+            vkGetPhysicalDeviceSurfaceFormatsKHR(device, _surface, &fmtCount, nullptr);
+            if (fmtCount == 0) { Panic("No surface formats found for selected GPU and surface."); }
+            info.formats.resize(fmtCount);
+            vkGetPhysicalDeviceSurfaceFormatsKHR(device, _surface, &fmtCount, info.formats.data());
+
+            u32 presentCount;
+            vkGetPhysicalDeviceSurfacePresentModesKHR(device, _surface, &presentCount, nullptr);
+            if (presentCount == 0) {
+                Panic("No presentation modes found for selected GPU and surface.");
+            }
+            info.presentModes.resize(presentCount);
+            vkGetPhysicalDeviceSurfacePresentModesKHR(device,
+                                                      _surface,
+                                                      &presentCount,
+                                                      info.presentModes.data());
+
+            return info;
+        }
+
+        // Checks for required extension support
+        bool CheckDeviceExtSupport(const VkPhysicalDevice device) const {
+            u32 extCount;
+            vkEnumerateDeviceExtensionProperties(device, nullptr, &extCount, nullptr);
+            std::vector<VkExtensionProperties> availableExtensions(extCount);
+            vkEnumerateDeviceExtensionProperties(device,
+                                                 nullptr,
+                                                 &extCount,
+                                                 availableExtensions.data());
+            std::set<str> requiredExtensions(_deviceExtensions.begin(), _deviceExtensions.end());
+            for (const auto& ext : availableExtensions) {
+                requiredExtensions.erase(ext.extensionName);
+            }
+            return requiredExtensions.empty();
+        }
 
         void CreateSurface() {
             if (glfwCreateWindowSurface(_instance, _window, nullptr, &_surface) != VK_SUCCESS) {
@@ -83,12 +130,13 @@ namespace x {
 
             VkPhysicalDeviceFeatures deviceFeatures = {};
 
-            VkDeviceCreateInfo createInfo    = {};
-            createInfo.sType                 = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-            createInfo.pQueueCreateInfos     = queueCreateInfos.data();
-            createInfo.queueCreateInfoCount  = CAST<u32>(queueCreateInfos.size());
-            createInfo.pEnabledFeatures      = &deviceFeatures;
-            createInfo.enabledExtensionCount = 0;
+            VkDeviceCreateInfo createInfo      = {};
+            createInfo.sType                   = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+            createInfo.pQueueCreateInfos       = queueCreateInfos.data();
+            createInfo.queueCreateInfoCount    = CAST<u32>(queueCreateInfos.size());
+            createInfo.pEnabledFeatures        = &deviceFeatures;
+            createInfo.enabledExtensionCount   = CAST<u32>(_deviceExtensions.size());
+            createInfo.ppEnabledExtensionNames = _deviceExtensions.data();
             if (_enableValidationLayers) {
                 createInfo.enabledLayerCount   = CAST<u32>(_validationLayers.size());
                 createInfo.ppEnabledLayerNames = _validationLayers.data();
@@ -103,7 +151,8 @@ namespace x {
             vkGetDeviceQueue(_device, graphics, 0, &_graphicsQueue);
             vkGetDeviceQueue(_device, present, 0, &_presentQueue);
 
-            std::cout << "Logical device and graphics queue created.\n";
+            std::cout
+              << "Logical device created.\nGraphics queue created.\nPresentation queue created.\n";
         }
 
         QueueFamilyIndices FindQueueFamilies(const VkPhysicalDevice device) const {
@@ -137,8 +186,16 @@ namespace x {
             vkGetPhysicalDeviceProperties(device, &deviceProps);
             vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
             const QueueFamilyIndices indices = FindQueueFamilies(device);
+            const bool extensionsSupported   = CheckDeviceExtSupport(device);
+            bool swapChainValid              = false;
+            if (extensionsSupported) {
+                SwapChainSupportInfo info = QuerySwapChainSupport(device);
+                swapChainValid            = !info.formats.empty() && !info.presentModes.empty();
+                // TODO: Add validation for HDR formats
+            }
             return deviceProps.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU &&
-                   deviceFeatures.geometryShader && indices.Valid();
+                   deviceFeatures.geometryShader && indices.Valid() && extensionsSupported &&
+                   swapChainValid;
         }
 
         // Queries for and selects an appropriate GPU (if one exists)
