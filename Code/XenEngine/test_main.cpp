@@ -17,208 +17,240 @@
 
 #include <vector>
 #include <optional>
+#include <set>
 
-class TestApp {
-public:
-    void Run() {
-        InitWindow();
-        InitVulkan();
-        MainLoop();
-        Cleanup();
-    }
+namespace x {
+    class TestApp {
+    public:
+        void Run() {
+            InitWindow();
+            InitVulkan();
+            MainLoop();
+            Cleanup();
+        }
 
-private:
-    GLFWwindow* _window              = nullptr;
-    VkInstance _instance             = VK_NULL_HANDLE;
-    VkPhysicalDevice _physicalDevice = VK_NULL_HANDLE;
-    VkDevice _device                 = VK_NULL_HANDLE;
-    VkQueue _graphicsQueue           = VK_NULL_HANDLE;
+    private:
+        GLFWwindow* _window              = nullptr;
+        VkInstance _instance             = VK_NULL_HANDLE;
+        VkPhysicalDevice _physicalDevice = VK_NULL_HANDLE;
+        VkDevice _device                 = VK_NULL_HANDLE;
+        VkQueue _graphicsQueue           = VK_NULL_HANDLE;
+        VkSurfaceKHR _surface            = VK_NULL_HANDLE;
+        VkQueue _presentQueue            = VK_NULL_HANDLE;
 
-    const std::vector<x::cstr> _validationLayers = {"VK_LAYER_KHRONOS_validation"};
+        const std::vector<cstr> _validationLayers = {"VK_LAYER_KHRONOS_validation"};
 #ifdef NDEBUG
-    const bool _enableValidationLayers = false;
+        const bool _enableValidationLayers = false;
 #else
-    const bool _enableValidationLayers = true;
+        const bool _enableValidationLayers = true;
 #endif
 
-    struct QueueFamilyIndices {
-        std::optional<x::u32> graphicsFamily;
+        struct QueueFamilyIndices {
+            std::optional<u32> graphicsFamily;
+            std::optional<u32> presentFamily;
 
-        bool Valid() const {
-            return graphicsFamily.has_value();
-        }
-
-        x::u32 Value() const {
-            return graphicsFamily.value();
-        }
-    };
-
-    void CreateLogicalDevice() {
-        QueueFamilyIndices indices          = FindQueueFamilies(_physicalDevice);
-        VkDeviceQueueCreateInfo qCreateInfo = {};
-        qCreateInfo.sType                   = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-        qCreateInfo.queueFamilyIndex        = indices.Value();
-        qCreateInfo.queueCount              = 1;
-        constexpr x::f32 queuePriority      = 1.0f;
-        qCreateInfo.pQueuePriorities        = &queuePriority;
-
-        VkPhysicalDeviceFeatures deviceFeatures = {};
-
-        VkDeviceCreateInfo createInfo    = {};
-        createInfo.sType                 = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-        createInfo.pQueueCreateInfos     = &qCreateInfo;
-        createInfo.queueCreateInfoCount  = 1;
-        createInfo.pEnabledFeatures      = &deviceFeatures;
-        createInfo.enabledExtensionCount = 0;
-        if (_enableValidationLayers) {
-            createInfo.enabledLayerCount   = CAST<x::u32>(_validationLayers.size());
-            createInfo.ppEnabledLayerNames = _validationLayers.data();
-        } else {
-            createInfo.enabledLayerCount = 0;
-        }
-
-        if (vkCreateDevice(_physicalDevice, &createInfo, nullptr, &_device) != VK_SUCCESS) {
-            Panic("Failed to create Vulkan logical device.");
-        }
-
-        vkGetDeviceQueue(_device, indices.Value(), 0, &_graphicsQueue);
-    }
-
-    static QueueFamilyIndices FindQueueFamilies(const VkPhysicalDevice device) {
-        QueueFamilyIndices indices;
-
-        x::u32 queueFamilyCount = 0;
-        vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
-        std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
-        vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
-        for (x::i32 i = 0; i < queueFamilyCount; i++) {
-            if (indices.Valid()) break;
-            if (const auto family = queueFamilies.at(i);
-                family.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-                indices.graphicsFamily = i;
+            bool Valid() const {
+                return graphicsFamily.has_value() && presentFamily.has_value();
             }
-        }
 
-        return indices;
-    }
-
-    static bool IsDeviceSuitable(const VkPhysicalDevice device) {
-        VkPhysicalDeviceProperties deviceProps;
-        VkPhysicalDeviceFeatures deviceFeatures;
-        vkGetPhysicalDeviceProperties(device, &deviceProps);
-        vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
-        const QueueFamilyIndices indices = FindQueueFamilies(device);
-        return deviceProps.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU &&
-               deviceFeatures.geometryShader && indices.Valid();
-    }
-
-    // Queries for and selects an appropriate GPU (if one exists)
-    void GetPhysicalDevice() {
-        x::u32 deviceCount = 0;
-        vkEnumeratePhysicalDevices(_instance, &deviceCount, nullptr);
-        if (!deviceCount) { Panic("Failed to find a Vulkan-compatible GPU."); }
-        std::vector<VkPhysicalDevice> devices(deviceCount);
-        vkEnumeratePhysicalDevices(_instance, &deviceCount, devices.data());
-
-        for (const auto& device : devices) {
-            if (IsDeviceSuitable(device)) {
-                _physicalDevice = device;
-                break;
+            std::pair<u32, u32> Values() const {
+                return {graphicsFamily.value(), presentFamily.value()};
             }
+        };
+
+        void CreateSurface() {
+            if (glfwCreateWindowSurface(_instance, _window, nullptr, &_surface) != VK_SUCCESS) {
+                Panic("Failed to create window surface.");
+            }
+            std::cout << "Window surface created.\n";
         }
 
-        if (_physicalDevice == VK_NULL_HANDLE) { Panic("Failed to find a suitable GPU."); }
-        std::cout << "Found suitable GPU.\n";
-    }
+        void CreateLogicalDevice() {
+            QueueFamilyIndices indices = FindQueueFamilies(_physicalDevice);
 
-    bool CheckValidationLayerSupport() const {
-        x::u32 layerCount;
-        vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
-        std::vector<VkLayerProperties> availableLayers(layerCount);
-        vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
+            std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
+            const auto [graphics, present] = indices.Values();
+            std::set uniqueQueueFamilies   = {graphics, present};
+            f32 queuePriority              = 1.0f;
+            for (u32 queueFamily : uniqueQueueFamilies) {
+                VkDeviceQueueCreateInfo info = {};
+                info.sType                   = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+                info.queueFamilyIndex        = queueFamily;
+                info.queueCount              = 1;
+                info.pQueuePriorities        = &queuePriority;
+                queueCreateInfos.push_back(info);
+            }
 
-        for (const x::cstr layerName : _validationLayers) {
-            bool layerFound = false;
-            for (const auto& props : availableLayers) {
-                if (strcmp(layerName, props.layerName) == 0) {
-                    layerFound = true;
+            VkPhysicalDeviceFeatures deviceFeatures = {};
+
+            VkDeviceCreateInfo createInfo    = {};
+            createInfo.sType                 = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+            createInfo.pQueueCreateInfos     = queueCreateInfos.data();
+            createInfo.queueCreateInfoCount  = CAST<u32>(queueCreateInfos.size());
+            createInfo.pEnabledFeatures      = &deviceFeatures;
+            createInfo.enabledExtensionCount = 0;
+            if (_enableValidationLayers) {
+                createInfo.enabledLayerCount   = CAST<u32>(_validationLayers.size());
+                createInfo.ppEnabledLayerNames = _validationLayers.data();
+            } else {
+                createInfo.enabledLayerCount = 0;
+            }
+
+            if (vkCreateDevice(_physicalDevice, &createInfo, nullptr, &_device) != VK_SUCCESS) {
+                Panic("Failed to create Vulkan logical device.");
+            }
+
+            vkGetDeviceQueue(_device, graphics, 0, &_graphicsQueue);
+            vkGetDeviceQueue(_device, present, 0, &_presentQueue);
+
+            std::cout << "Logical device and graphics queue created.\n";
+        }
+
+        QueueFamilyIndices FindQueueFamilies(const VkPhysicalDevice device) const {
+            QueueFamilyIndices indices;
+
+            u32 queueFamilyCount = 0;
+            vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
+            std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+            vkGetPhysicalDeviceQueueFamilyProperties(device,
+                                                     &queueFamilyCount,
+                                                     queueFamilies.data());
+            for (i32 i = 0; i < queueFamilyCount; i++) {
+                if (const auto family = queueFamilies.at(i);
+                    family.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+                    indices.graphicsFamily = i;
+                }
+
+                VkBool32 presentSupport = false;
+                vkGetPhysicalDeviceSurfaceSupportKHR(device, i, _surface, &presentSupport);
+                if (presentSupport) { indices.presentFamily = i; }
+
+                if (indices.Valid()) break;
+            }
+
+            return indices;
+        }
+
+        bool IsDeviceSuitable(const VkPhysicalDevice device) const {
+            VkPhysicalDeviceProperties deviceProps;
+            VkPhysicalDeviceFeatures deviceFeatures;
+            vkGetPhysicalDeviceProperties(device, &deviceProps);
+            vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
+            const QueueFamilyIndices indices = FindQueueFamilies(device);
+            return deviceProps.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU &&
+                   deviceFeatures.geometryShader && indices.Valid();
+        }
+
+        // Queries for and selects an appropriate GPU (if one exists)
+        void GetPhysicalDevice() {
+            u32 deviceCount = 0;
+            vkEnumeratePhysicalDevices(_instance, &deviceCount, nullptr);
+            if (!deviceCount) { Panic("Failed to find a Vulkan-compatible GPU."); }
+            std::vector<VkPhysicalDevice> devices(deviceCount);
+            vkEnumeratePhysicalDevices(_instance, &deviceCount, devices.data());
+
+            for (const auto& device : devices) {
+                if (IsDeviceSuitable(device)) {
+                    _physicalDevice = device;
                     break;
                 }
             }
-            if (!layerFound) { return false; }
+
+            if (_physicalDevice == VK_NULL_HANDLE) { Panic("Failed to find a suitable GPU."); }
+            std::cout << "Found suitable GPU.\n";
         }
 
-        return true;
-    }
+        bool CheckValidationLayerSupport() const {
+            u32 layerCount;
+            vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
+            std::vector<VkLayerProperties> availableLayers(layerCount);
+            vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
 
-    void CreateInstance() {
-        if (_enableValidationLayers) {
-            if (const auto result = CheckValidationLayerSupport()) {
-                std::cout << "Validation layers enabled.\n";
-            } else {
-                Panic("Failed to enable validation layers for debug build.");
+            for (const cstr layerName : _validationLayers) {
+                bool layerFound = false;
+                for (const auto& props : availableLayers) {
+                    if (strcmp(layerName, props.layerName) == 0) {
+                        layerFound = true;
+                        break;
+                    }
+                }
+                if (!layerFound) { return false; }
+            }
+
+            return true;
+        }
+
+        void CreateInstance() {
+            if (_enableValidationLayers) {
+                if (CheckValidationLayerSupport()) {
+                    std::cout << "Validation layers enabled.\n";
+                } else {
+                    Panic("Failed to enable validation layers for debug build.");
+                }
+            }
+
+            VkApplicationInfo appInfo  = {};
+            appInfo.sType              = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+            appInfo.pApplicationName   = "XenVulkan";
+            appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
+            appInfo.pEngineName        = "Xen";
+            appInfo.engineVersion      = VK_MAKE_VERSION(0, 0, 1);
+            appInfo.apiVersion         = VK_API_VERSION_1_0;
+
+            VkInstanceCreateInfo createInfo = {};
+            createInfo.sType                = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+            createInfo.pApplicationInfo     = &appInfo;
+
+            u32 glfwExtCount                   = 0;
+            cstr* glfwExtensions               = glfwGetRequiredInstanceExtensions(&glfwExtCount);
+            createInfo.enabledExtensionCount   = glfwExtCount;
+            createInfo.ppEnabledExtensionNames = glfwExtensions;
+            createInfo.enabledLayerCount       = 0;
+            if (_enableValidationLayers) {
+                createInfo.enabledLayerCount   = CAST<u32>(_validationLayers.size());
+                createInfo.ppEnabledLayerNames = _validationLayers.data();
+            }
+
+            if (vkCreateInstance(&createInfo, nullptr, &_instance) != VK_SUCCESS) {
+                Panic("Failed to create Vulkan instance.");
+            }
+
+            std::cout << "Vulkan instance created.\n";
+        }
+
+        void InitWindow() {
+            glfwInit();
+            glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+            glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+            _window = glfwCreateWindow(800, 600, "Vulkan Test", nullptr, nullptr);
+            if (!_window) { Panic("Failed to create GLFW window."); }
+        }
+
+        void InitVulkan() {
+            CreateInstance();
+            CreateSurface();
+            GetPhysicalDevice();
+            CreateLogicalDevice();
+        }
+
+        void MainLoop() const {
+            while (!glfwWindowShouldClose(_window)) {
+                glfwPollEvents();
             }
         }
 
-        VkApplicationInfo appInfo  = {};
-        appInfo.sType              = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-        appInfo.pApplicationName   = "XenVulkan";
-        appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
-        appInfo.pEngineName        = "Xen";
-        appInfo.engineVersion      = VK_MAKE_VERSION(0, 0, 1);
-        appInfo.apiVersion         = VK_API_VERSION_1_0;
-
-        VkInstanceCreateInfo createInfo = {};
-        createInfo.sType                = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-        createInfo.pApplicationInfo     = &appInfo;
-
-        x::u32 glfwExtCount                = 0;
-        x::cstr* glfwExtensions            = glfwGetRequiredInstanceExtensions(&glfwExtCount);
-        createInfo.enabledExtensionCount   = glfwExtCount;
-        createInfo.ppEnabledExtensionNames = glfwExtensions;
-        createInfo.enabledLayerCount       = 0;
-        if (_enableValidationLayers) {
-            createInfo.enabledLayerCount   = CAST<x::u32>(_validationLayers.size());
-            createInfo.ppEnabledLayerNames = _validationLayers.data();
+        void Cleanup() const {
+            vkDestroySurfaceKHR(_instance, _surface, nullptr);
+            vkDestroyDevice(_device, nullptr);
+            vkDestroyInstance(_instance, nullptr);
+            glfwDestroyWindow(_window);
+            glfwTerminate();
         }
-
-        if (vkCreateInstance(&createInfo, nullptr, &_instance) != VK_SUCCESS) {
-            Panic("Failed to create Vulkan instance.");
-        }
-
-        std::cout << "Vulkan instance created.\n";
-    }
-
-    void InitWindow() {
-        glfwInit();
-        glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-        glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
-        _window = glfwCreateWindow(800, 600, "Vulkan Test", nullptr, nullptr);
-        if (!_window) { Panic("Failed to create GLFW window."); }
-    }
-
-    void InitVulkan() {
-        CreateInstance();
-        GetPhysicalDevice();
-        CreateLogicalDevice();
-    }
-
-    void MainLoop() {
-        while (!glfwWindowShouldClose(_window)) {
-            glfwPollEvents();
-        }
-    }
-
-    void Cleanup() {
-        vkDestroyDevice(_device, nullptr);
-        vkDestroyInstance(_instance, nullptr);
-        glfwDestroyWindow(_window);
-        glfwTerminate();
-    }
-};
+    };
+}  // namespace x
 
 int main() {
-    TestApp app;
+    x::TestApp app;
     app.Run();
     return EXIT_SUCCESS;
 }
