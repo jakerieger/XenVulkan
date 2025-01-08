@@ -46,6 +46,9 @@ namespace x {
         VkSurfaceKHR _surface            = VK_NULL_HANDLE;
         VkQueue _presentQueue            = VK_NULL_HANDLE;
         VkSwapchainKHR _swapChain        = VK_NULL_HANDLE;
+        VkFormat _swapChainFormat        = VK_FORMAT_UNDEFINED;
+        VkExtent2D _swapChainExtent      = {0, 0};
+        std::vector<VkImage> _swapChainImages;
 
         const std::vector<cstr> _validationLayers = {"VK_LAYER_KHRONOS_validation"};
         const std::vector<cstr> _deviceExtensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
@@ -109,6 +112,13 @@ namespace x {
             if (vkCreateSwapchainKHR(_device, &createInfo, nullptr, &_swapChain) != VK_SUCCESS) {
                 Panic("Failed to create swap chain.");
             }
+
+            vkGetSwapchainImagesKHR(_device, _swapChain, &imageCount, nullptr);
+            _swapChainImages.resize(imageCount);
+            vkGetSwapchainImagesKHR(_device, _swapChain, &imageCount, _swapChainImages.data());
+
+            _swapChainFormat = surfaceFormat.format;
+            _swapChainExtent = extent;
 
             std::cout << "Created swap chain.\n";
         }
