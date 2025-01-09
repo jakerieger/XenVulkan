@@ -46,6 +46,9 @@ namespace x::vk {
         [[nodiscard]] static QueueFamilyIndices FindQueueFamilies(VkPhysicalDevice device,
                                                                   VkSurfaceKHR surface);
         [[nodiscard]] static std::vector<const char*> GetRequiredDeviceExtensions();
+        [[nodiscard]] static i32 ScorePhysicalDevice(VkPhysicalDevice device, VkSurfaceKHR surface);
+        static VkPhysicalDevice SelectBestDevice(const std::vector<VkPhysicalDevice>& devices,
+                                                 VkSurfaceKHR surface);
 
         VkPhysicalDevice _physicalDevice = VK_NULL_HANDLE;
         VkDevice _device                 = VK_NULL_HANDLE;

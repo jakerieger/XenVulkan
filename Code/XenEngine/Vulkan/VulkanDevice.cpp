@@ -6,6 +6,7 @@
 
 #include "VulkanStruct.hpp"
 
+#include <algorithm>
 #include <set>
 
 namespace x::vk {
@@ -26,15 +27,10 @@ namespace x::vk {
 
         std::vector<VkPhysicalDevice> devices(deviceCount);
         vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
-
-        // Find first suitable device that meets our requirements
-        for (const auto& device : devices) {
-            if (IsDeviceSuitable(device, surface)) {
-                _physicalDevice     = device;
-                _queueFamilyIndices = FindQueueFamilies(device, surface);
-                break;
-            }
-        }
+        auto bestDevice = SelectBestDevice(devices, surface);
+        if (!bestDevice) { Panic("No suitable GPU found."); }
+        _physicalDevice     = bestDevice;
+        _queueFamilyIndices = FindQueueFamilies(bestDevice, surface);
 
         if (_physicalDevice == VK_NULL_HANDLE) { Panic("Failed to find a suitable GPU"); }
         printf("Found usable GPU\n");
@@ -86,17 +82,50 @@ namespace x::vk {
         vkGetDeviceQueue(_device, _queueFamilyIndices.presentFamily.value(), 0, &_presentQueue);
     }
 
-    bool VulkanDevice::IsDeviceSuitable(VkPhysicalDevice device, VkSurfaceKHR surface) {
-        // Query device properties for making informed decisions about device selection
+    struct DeviceScore {
+        VkPhysicalDevice device;
+        i32 score;
+
+        DeviceScore(VkPhysicalDevice d, const i32 s) : device(d), score(s) {}
+
+        bool operator<(const DeviceScore& other) const {
+            return score > other.score;  // > for descending order
+        }
+    };
+
+    i32 VulkanDevice::ScorePhysicalDevice(VkPhysicalDevice device, VkSurfaceKHR surface) {
+        i32 score = 0;
+
+        // Query device properties and features
         VkPhysicalDeviceProperties deviceProperties;
         VkPhysicalDeviceFeatures deviceFeatures;
         vkGetPhysicalDeviceProperties(device, &deviceProperties);
         vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
 
-        // Check for required queue families
-        QueueFamilyIndices indices = FindQueueFamilies(device, surface);
+        // Score based on device type - this is our primary differentiator
+        switch (deviceProperties.deviceType) {
+            case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU:
+                score += 10000;  // Strongly prefer discrete GPUs
+                break;
+            case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU:
+                score += 1000;  // Integrated GPUs are second choice
+                break;
+            default:
+                return 0;  // All other types (CPU, virtual, other) get no score
+        }
 
-        // Verify extension support
+        // Check for required features - these are mandatory
+        if (!deviceFeatures.geometryShader) {
+            return 0;  // Device is unsuitable if it lacks required features
+        }
+
+        // Check queue families
+        QueueFamilyIndices indices = FindQueueFamilies(device, surface);
+        if (!indices.IsComplete()) {
+            return 0;  // Device is unsuitable if it lacks required queue families
+        }
+
+        // Check extension support
         u32 extensionCount;
         vkEnumerateDeviceExtensionProperties(device, None, &extensionCount, None);
         std::vector<VkExtensionProperties> availableExtensions(extensionCount);
@@ -105,24 +134,51 @@ namespace x::vk {
                                              &extensionCount,
                                              availableExtensions.data());
 
-        // Create a set of required extensions for easy lookup
         auto required = GetRequiredDeviceExtensions();
         std::set<str> requiredExtensions(required.begin(), required.end());
 
-        // Remove extensions we find from our required set
         for (const auto& extension : availableExtensions) {
             requiredExtensions.erase(extension.extensionName);
         }
 
-        // Device is considered suitable if:
-        // 1. It's a discrete GPU (better performance than integrated) or worst case, an integrated
-        // GPU
-        // 2. It supports geometry shaders
-        // 3. It has all required queue families
-        // 4. It supports all required extensions (set is empty after finding them all)
-        return (deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ||
-                deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) &&
-               deviceFeatures.geometryShader && indices.IsComplete() && requiredExtensions.empty();
+        if (!requiredExtensions.empty()) {
+            return 0;  // Device is unsuitable if it lacks required extensions
+        }
+
+        // Score based on device limits
+        score +=
+          deviceProperties.limits.maxImageDimension2D / 4096;  // Reward higher texture dimensions
+
+        // Score based on memory size (if available)
+        VkPhysicalDeviceMemoryProperties memProperties;
+        vkGetPhysicalDeviceMemoryProperties(device, &memProperties);
+
+        VkDeviceSize totalMemory = 0;
+        for (uint32_t i = 0; i < memProperties.memoryHeapCount; i++) {
+            if (memProperties.memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) {
+                totalMemory += memProperties.memoryHeaps[i].size;
+            }
+        }
+        score +=
+          static_cast<int>(totalMemory / (1024 * 1024 * 1024));  // Add points per GB of memory
+
+        return score;
+    }
+
+    VkPhysicalDevice VulkanDevice::SelectBestDevice(const std::vector<VkPhysicalDevice>& devices,
+                                                    VkSurfaceKHR surface) {
+        std::vector<DeviceScore> scoredDevices;
+        scoredDevices.reserve(devices.size());
+        for (const auto& device : devices) {
+            i32 score = ScorePhysicalDevice(device, surface);
+            if (score > 0) scoredDevices.emplace_back(device, score);
+        }
+        std::sort(scoredDevices.begin(), scoredDevices.end());
+        return !scoredDevices.empty() ? scoredDevices[0].device : VK_NULL_HANDLE;
+    }
+
+    bool VulkanDevice::IsDeviceSuitable(VkPhysicalDevice device, VkSurfaceKHR surface) {
+        return ScorePhysicalDevice(device, surface) > 0;
     }
 
     QueueFamilyIndices VulkanDevice::FindQueueFamilies(VkPhysicalDevice device,
