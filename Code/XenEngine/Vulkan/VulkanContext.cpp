@@ -71,11 +71,11 @@ namespace x::vk {
             Panic("Failed to create window surface.");
         }
 
-       // _device = std::make_unique<VulkanDevice>();
+       _device = std::make_unique<VulkanDevice>(_instance, _surface);
     }
 
     VulkanContext::~VulkanContext() {
-        //_device.reset();
+        _device.reset();
         vkDestroySurfaceKHR(_instance, _surface, None);
         vkDestroyInstance(_instance, None);
     }
@@ -89,7 +89,6 @@ namespace x::vk {
     }
 
     VulkanDevice* VulkanContext::GetDevice() const {
-        // return _device.get();
-        return None;
+        return _device.get();
     }
 }  // namespace x::vk

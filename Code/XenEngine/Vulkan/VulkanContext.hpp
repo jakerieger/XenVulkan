@@ -11,10 +11,6 @@
 #include "VulkanDevice.hpp"
 
 namespace x::vk {
-    class SwapChain;
-    class RenderPass;
-    class Pipeline;
-
     class VulkanContext {
     public:
         explicit VulkanContext(GLFWwindow** window, bool enableValidationLayers = false);
@@ -27,9 +23,6 @@ namespace x::vk {
     private:
         VkInstance _instance = VK_NULL_HANDLE;
         VkSurfaceKHR _surface = VK_NULL_HANDLE;
-        // std::unique_ptr<VulkanDevice> _device;
-        // std::unique_ptr<SwapChain> _swapChain;
-        // std::unique_ptr<RenderPass> _renderPass;
-        // std::unique_ptr<Pipeline> _pipeline;
+        std::unique_ptr<VulkanDevice> _device;
     };
 }  // namespace x::vk
