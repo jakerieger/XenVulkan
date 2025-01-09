@@ -24,5 +24,7 @@ include_directories(
 
 find_package(glm CONFIG REQUIRED)
 find_package(glfw3 CONFIG REQUIRED)
+find_package(Vulkan REQUIRED)
 
 add_subdirectory(${ENGINE})
+add_subdirectory(${TOOLS}/xFX)

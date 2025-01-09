@@ -1,0 +1,26 @@
+{
+    "version": "1.0",
+    "name": "ExampleCompute",
+    "description": "Example of defining a compute shader xfx schema.",
+    "tags": [
+        "compute"
+    ],
+    "type": "compute",
+    "compute": {
+        "source": "Source/ExampleCompute.comp",
+        "entry": "main",
+        "workgroup_size": [
+            256,
+            1,
+            1
+        ],
+        "specialization_constants": [
+            {
+                "id": 0,
+                "name": "PARTICLES_PER_THREAD",
+                "type": "int",
+                "default": 64
+            }
+        ]
+    }
+}

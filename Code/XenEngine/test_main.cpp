@@ -16,6 +16,7 @@
 #include "Panic.inl"
 #include "Filesystem.hpp"
 #include "Vulkan/VulkanStruct.hpp"
+#include "xFX/Fx.hpp"
 
 #include <vector>
 #include <optional>
@@ -286,10 +287,10 @@ namespace x {
         }
 
         void CreatePipeline() {
-            const auto vertCode   = FileReader::ReadAllBytes("Shaders/Unlit.vert.spv");
-            const auto fragCode   = FileReader::ReadAllBytes("Shaders/Unlit.frag.spv");
-            const auto vertModule = CreateShaderModule(vertCode);
-            const auto fragModule = CreateShaderModule(fragCode);
+            auto helloTriangleFx =
+              Fx::LoadFromXFX(Path(R"(C:\Users\conta\Code\XenVulkan\Engine\Shaders\Unlit.xfx)"));
+            const auto vertModule = CreateShaderModule(helloTriangleFx.vertexStage->bytecode);
+            const auto fragModule = CreateShaderModule(helloTriangleFx.fragmentStage->bytecode);
 
             vk::VulkanStruct<VkPipelineShaderStageCreateInfo> vertCreateInfo;
             vertCreateInfo.stage  = VK_SHADER_STAGE_VERTEX_BIT;

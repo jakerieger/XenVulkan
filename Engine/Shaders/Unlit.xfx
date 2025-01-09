@@ -1,0 +1,40 @@
+{
+    "version": "1.0",
+    "name": "HelloTriangle",
+    "description": "The most basic shader program one can write. Outputs a triangle.",
+    "tags": [
+        "unlit",
+        "opaque"
+    ],
+    "type": "graphics",
+    "defines": [],
+    "graphics": {
+        "vertex": {
+            "source": "Source/Unlit.vert",
+            "entry": "main",
+            "specialization_constants": []
+        },
+        "fragment": {
+            "source": "Source/Unlit.frag",
+            "entry": "main",
+            "specialization_constants": []
+        }
+    },
+    "pipeline_state": {
+        "blend_state": {
+            "enabled": true,
+            "src_color": "SRC_ALPHA",
+            "dst_color": "ONE_MINUS_SRC_ALPHA"
+        },
+        "depth_state": {
+            "test_enabled": true,
+            "write_enabled": true,
+            "compare_op": "LESS"
+        },
+        "rasterizer_state": {
+            "cull_mode": "BACK",
+            "front_face": "CLOCKWISE",
+            "polygon_mode": "FILL"
+        }
+    }
+}
