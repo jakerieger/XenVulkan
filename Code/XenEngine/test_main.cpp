@@ -14,6 +14,7 @@
 
 #include "Types.hpp"
 #include "Panic.inl"
+#include "Filesystem.hpp"
 
 #include <vector>
 #include <optional>
@@ -22,6 +23,8 @@
 #include <algorithm>
 
 namespace x {
+    using namespace Filesystem;
+
     class TestApp {
     public:
         void Run() {
@@ -285,7 +288,7 @@ namespace x {
             vkGetPhysicalDeviceQueueFamilyProperties(device,
                                                      &queueFamilyCount,
                                                      queueFamilies.data());
-            for (i32 i = 0; i < queueFamilyCount; i++) {
+            for (i32 i = 0; i < CAST<i32>(queueFamilyCount); i++) {
                 if (const auto family = queueFamilies.at(i);
                     family.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
                     indices.graphicsFamily = i;

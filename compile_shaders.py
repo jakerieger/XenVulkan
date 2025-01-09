@@ -4,7 +4,7 @@ import subprocess
 import glob
 
 
-def load_config(config_path):
+def load_config(config_path: str):
     try:
         with open(config_path, 'r') as f:
             config = json.load(f)
@@ -21,7 +21,7 @@ def load_config(config_path):
         raise ValueError("Invalid configuration file")
 
 
-def compile_shader(glslc_path, shader_path, output_path):
+def compile_shader(glslc_path: str, shader_path: str, output_path: str):
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     try:
         result = subprocess.run([glslc_path, shader_path, '-o', output_path], capture_output=True,
