@@ -74,6 +74,8 @@ namespace x {
             std::vector<VkPresentModeKHR> presentModes;
         };
 
+        void CreatePipeline() {}
+
         void CreateImageViews() {
             _swapChainViews.resize(_swapChainImages.size());
             for (size_t i = 0; i < _swapChainImages.size(); i++) {
@@ -408,6 +410,7 @@ namespace x {
             CreateLogicalDevice();
             CreateSwapChain();
             CreateImageViews();
+            CreatePipeline();
         }
 
         void MainLoop() const {
