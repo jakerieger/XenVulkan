@@ -12,6 +12,7 @@ def load_config(config_path: str):
         for field in required_fields:
             if field not in config:
                 raise ValueError(f"Missing required field: {field}")
+        config['glslc_path'] = os.path.expandvars(config['glslc_path'])
         if not os.path.exists(config['glslc_path']):
             raise FileNotFoundError(f"glslc compiler not found at: {config['glslc_path']}")
         config['source'] = os.path.expandvars(config['source'])

@@ -57,6 +57,7 @@ namespace x {
         VkRenderPass _renderPass         = VK_NULL_HANDLE;
         VkPipeline _pipeline             = VK_NULL_HANDLE;
         VkCommandPool _commandPool       = VK_NULL_HANDLE;
+        VkCommandBuffer _commandBuffer   = VK_NULL_HANDLE;
         std::vector<VkImage> _swapChainImages;
         std::vector<VkImageView> _swapChainViews;
         std::vector<VkFramebuffer> _frameBuffers;
@@ -82,8 +83,63 @@ namespace x {
             std::vector<VkPresentModeKHR> presentModes;
         };
 
+        void RecordCommandBuffer(const VkCommandBuffer commandBuffer, const u32 imageIndex) const {
+            vk::VulkanStruct<VkCommandBufferBeginInfo> beginInfo;
+
+            // Note: If the command buffer was already recorded once, then a call to
+            // vkBeginCommandBuffer will implicitly reset it. It's not possible to append commands
+            // to a buffer at a later time.
+            if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) {
+                Panic("Failed to begin recording command buffer.");
+            }
+
+            constexpr VkClearValue clearColor = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
+            vk::VulkanStruct<VkRenderPassBeginInfo> renderPassInfo;
+            renderPassInfo.renderPass        = _renderPass;
+            renderPassInfo.framebuffer       = _frameBuffers[imageIndex];
+            renderPassInfo.renderArea.offset = {0, 0};
+            renderPassInfo.renderArea.extent = _swapChainExtent;
+            renderPassInfo.clearValueCount   = 1;
+            renderPassInfo.pClearValues      = &clearColor;
+
+            vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+            vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, _pipeline);
+
+            VkViewport viewport {};
+            viewport.x        = 0.0f;
+            viewport.y        = 0.0f;
+            viewport.width    = CAST<f32>(_swapChainExtent.width);
+            viewport.height   = CAST<f32>(_swapChainExtent.height);
+            viewport.minDepth = 0.0f;
+            viewport.maxDepth = 1.0f;
+            vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+
+            VkRect2D scissor {};
+            scissor.offset = {0, 0};
+            scissor.extent = _swapChainExtent;
+            vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+
+            vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+
+            vkCmdEndRenderPass(commandBuffer);
+            if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
+                Panic("Failed to record command buffer.");
+            }
+        }
+
+        void CreateCommandBuffer() {
+            vk::VulkanStruct<VkCommandBufferAllocateInfo> allocInfo;
+            allocInfo.commandPool        = _commandPool;
+            allocInfo.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+            allocInfo.commandBufferCount = 1;
+            if (vkAllocateCommandBuffers(_device, &allocInfo, &_commandBuffer) != VK_SUCCESS) {
+                Panic("Failed to allocate command buffers.");
+            }
+            printf("Allocated (%d) command buffers.\n", 1U);
+        }
+
         void CreateCommandPool() {
-            auto indices = FindQueueFamilies(_physicalDevice);
+            const auto indices = FindQueueFamilies(_physicalDevice);
             vk::VulkanStruct<VkCommandPoolCreateInfo> poolInfo;
             poolInfo.flags            = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
             poolInfo.queueFamilyIndex = indices.Values().first;
@@ -189,27 +245,30 @@ namespace x {
             inputAssembly.topology               = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
             inputAssembly.primitiveRestartEnable = VK_FALSE;
 
-            VkViewport viewport = {};
-            viewport.x          = 0.0f;
-            viewport.y          = 0.0f;
-            viewport.width      = CAST<f32>(_swapChainExtent.width);
-            viewport.height     = CAST<f32>(_swapChainExtent.height);
-            viewport.minDepth   = 0.0f;
-            viewport.maxDepth   = 1.0f;
+            // VkViewport viewport = {};
+            // viewport.x          = 0.0f;
+            // viewport.y          = 0.0f;
+            // viewport.width      = CAST<f32>(_swapChainExtent.width);
+            // viewport.height     = CAST<f32>(_swapChainExtent.height);
+            // viewport.minDepth   = 0.0f;
+            // viewport.maxDepth   = 1.0f;
+            //
+            // VkRect2D scissor = {};
+            // scissor.offset   = {0, 0};
+            // scissor.extent   = _swapChainExtent;
 
-            VkRect2D scissor = {};
-            scissor.offset   = {0, 0};
-            scissor.extent   = _swapChainExtent;
+            std::vector<VkDynamicState> dynamicStates = {
+              VK_DYNAMIC_STATE_VIEWPORT,
+              VK_DYNAMIC_STATE_SCISSOR,
+            };
 
-            // Viewport and Scissor states are STATIC in this instance.
-            // See:
-            // https://vulkan-tutorial.com/en/Drawing_a_triangle/Graphics_pipeline_basics/Fixed_functions
-            // for enabling dynamic state for these
+            vk::VulkanStruct<VkPipelineDynamicStateCreateInfo> dynamicState;
+            dynamicState.dynamicStateCount = CAST<u32>(dynamicStates.size());
+            dynamicState.pDynamicStates    = dynamicStates.data();
+
             vk::VulkanStruct<VkPipelineViewportStateCreateInfo> viewportState;
             viewportState.viewportCount = 1;
-            viewportState.pViewports    = &viewport;
             viewportState.scissorCount  = 1;
-            viewportState.pScissors     = &scissor;
 
             vk::VulkanStruct<VkPipelineRasterizationStateCreateInfo> rasterizer;
             rasterizer.depthClampEnable = VK_FALSE;
@@ -267,7 +326,7 @@ namespace x {
             pipelineInfo.pMultisampleState   = &multisampling;
             pipelineInfo.pDepthStencilState  = None;  // Optional
             pipelineInfo.pColorBlendState    = &colorBlending;
-            pipelineInfo.pDynamicState       = None;  //&dynamicState;
+            pipelineInfo.pDynamicState       = &dynamicState;
             pipelineInfo.layout              = _pipelineLayout;
             pipelineInfo.renderPass          = _renderPass;
             pipelineInfo.subpass             = 0;
@@ -625,6 +684,7 @@ namespace x {
             CreatePipeline();
             CreateFramebuffers();
             CreateCommandPool();
+            CreateCommandBuffer();
         }
 
         void MainLoop() const {

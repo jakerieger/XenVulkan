@@ -122,6 +122,27 @@ namespace x::vk {
         static constexpr VkStructureType value = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     };
 
+    template<>
+    struct VulkanTypeMap<VkCommandBufferAllocateInfo> {
+        static constexpr VkStructureType value = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    };
+
+    template<>
+    struct VulkanTypeMap<VkCommandBufferBeginInfo> {
+        static constexpr VkStructureType value = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    };
+
+    template<>
+    struct VulkanTypeMap<VkRenderPassBeginInfo> {
+        static constexpr VkStructureType value = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    };
+
+    template<>
+    struct VulkanTypeMap<VkPipelineDynamicStateCreateInfo> {
+        static constexpr VkStructureType value =
+          VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+    };
+
     template<typename T>
     class VulkanStruct : public T {
     public:
