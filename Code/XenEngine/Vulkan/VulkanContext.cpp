@@ -3,6 +3,7 @@
 //
 
 #include <vector>
+#include <vulkan/vulkan_core.h>
 
 #include "VulkanContext.hpp"
 #include "VulkanStruct.hpp"
@@ -13,9 +14,9 @@ namespace x::vk {
     static const std::vector kValidationLayers = {"VK_LAYER_KHRONOS_validation"};
 
     static bool CheckValidationLayerSupport() {
-        u32 layerCount = 0;
+        u32 layerCount;
         vkEnumerateInstanceLayerProperties(&layerCount, None);
-        std::vector<VkLayerProperties> availableLayers;
+        std::vector<VkLayerProperties> availableLayers(layerCount);
         vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
         for (const auto name : kValidationLayers) {
             bool found = false;
@@ -31,11 +32,15 @@ namespace x::vk {
     }
 
     VulkanContext::VulkanContext(GLFWwindow** window, const bool enableValidationLayers) {
+        bool validationAvailable = false;
         if (enableValidationLayers) {
-            if (CheckValidationLayerSupport()) {
+            validationAvailable = CheckValidationLayerSupport();
+            if (validationAvailable) {
                 printf("Validation layers are supported.\n");
             } else {
-                Panic("Failed to enable validation layers.");
+                printf("Note: Validation layers were requested but are not available. "
+                       "This is normal if you haven't installed vulkan-validationlayers. "
+                       "Continuing without validation.\n");
             }
         }
 
@@ -53,7 +58,7 @@ namespace x::vk {
         createInfo.enabledExtensionCount   = extensionCount;
         createInfo.ppEnabledExtensionNames = extensions;
         createInfo.enabledLayerCount       = 0;
-        if (enableValidationLayers) {
+        if (enableValidationLayers && validationAvailable) {
             createInfo.enabledLayerCount   = CAST<u32>(kValidationLayers.size());
             createInfo.ppEnabledLayerNames = kValidationLayers.data();
         }
@@ -66,11 +71,11 @@ namespace x::vk {
             Panic("Failed to create window surface.");
         }
 
-        _device = std::make_unique<VulkanDevice>();
+       // _device = std::make_unique<VulkanDevice>();
     }
 
     VulkanContext::~VulkanContext() {
-        _device.reset();
+        //_device.reset();
         vkDestroySurfaceKHR(_instance, _surface, None);
         vkDestroyInstance(_instance, None);
     }
@@ -84,6 +89,7 @@ namespace x::vk {
     }
 
     VulkanDevice* VulkanContext::GetDevice() const {
-        return _device.get();
+        // return _device.get();
+        return None;
     }
 }  // namespace x::vk
