@@ -64,6 +64,11 @@ namespace x {
         const std::vector<cstr> _validationLayers = {"VK_LAYER_KHRONOS_validation"};
         const std::vector<cstr> _deviceExtensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
 
+        // Synchronization objects
+        VkSemaphore _imageAvailable = VK_NULL_HANDLE;
+        VkSemaphore _renderFinished = VK_NULL_HANDLE;
+        VkFence _inFlight           = VK_NULL_HANDLE;
+
         struct QueueFamilyIndices {
             std::optional<u32> graphicsFamily;
             std::optional<u32> presentFamily;
@@ -82,6 +87,63 @@ namespace x {
             std::vector<VkSurfaceFormatKHR> formats;
             std::vector<VkPresentModeKHR> presentModes;
         };
+
+        void CreateSyncObjects() {
+            const vk::VulkanStruct<VkSemaphoreCreateInfo> semaphoreInfo;
+            vk::VulkanStruct<VkFenceCreateInfo> fenceInfo;
+            fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;  // Create our fence in signaled state
+                                                             // so first frame doesn't block
+
+            if (vkCreateSemaphore(_device, &semaphoreInfo, None, &_imageAvailable) != VK_SUCCESS) {
+                Panic("Failed to create 'image available' semaphore.");
+            }
+            if (vkCreateSemaphore(_device, &semaphoreInfo, None, &_renderFinished) != VK_SUCCESS) {
+                Panic("Failed to create 'render finished' semaphore.");
+            }
+            if (vkCreateFence(_device, &fenceInfo, None, &_inFlight) != VK_SUCCESS) {
+                Panic("Failed to create 'in flight' fence.");
+            }
+            printf("Created sync objects.\n");
+        }
+
+        void DrawFrame() const {
+            vkWaitForFences(_device, 1, &_inFlight, VK_TRUE, UINT64_MAX);
+            vkResetFences(_device, 1, &_inFlight);
+            u32 imageIndex;
+            vkAcquireNextImageKHR(_device,
+                                  _swapChain,
+                                  UINT64_MAX,
+                                  _imageAvailable,
+                                  VK_NULL_HANDLE,
+                                  &imageIndex);
+            vkResetCommandBuffer(_commandBuffer, 0);
+            RecordCommandBuffer(_commandBuffer, imageIndex);
+            vk::VulkanStruct<VkSubmitInfo> submitInfo;
+            VkSemaphore waitSemaphores[]      = {_imageAvailable};
+            VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+            submitInfo.waitSemaphoreCount     = 1;
+            submitInfo.pWaitSemaphores        = waitSemaphores;
+            submitInfo.pWaitDstStageMask      = waitStages;
+            submitInfo.commandBufferCount     = 1;
+            submitInfo.pCommandBuffers        = &_commandBuffer;
+            VkSemaphore signalSemaphores[]    = {_renderFinished};
+            submitInfo.signalSemaphoreCount   = 1;
+            submitInfo.pSignalSemaphores      = signalSemaphores;
+            if (vkQueueSubmit(_graphicsQueue, 1, &submitInfo, _inFlight) != VK_SUCCESS) {
+                Panic("Failed to submit draw command buffer.");
+            }
+
+            vk::VulkanStruct<VkPresentInfoKHR> presentInfo;
+            presentInfo.waitSemaphoreCount = 1;
+            presentInfo.pWaitSemaphores    = signalSemaphores;
+
+            VkSwapchainKHR swapChains[] = {_swapChain};
+            presentInfo.swapchainCount  = 1;
+            presentInfo.pSwapchains     = swapChains;
+            presentInfo.pImageIndices   = &imageIndex;
+
+            vkQueuePresentKHR(_presentQueue, &presentInfo);
+        }
 
         void RecordCommandBuffer(const VkCommandBuffer commandBuffer, const u32 imageIndex) const {
             vk::VulkanStruct<VkCommandBufferBeginInfo> beginInfo;
@@ -188,11 +250,21 @@ namespace x {
             subpass.colorAttachmentCount = 1;
             subpass.pColorAttachments    = &colorAttachmentRef;
 
+            VkSubpassDependency dependency = {};
+            dependency.srcSubpass          = VK_SUBPASS_EXTERNAL;
+            dependency.dstSubpass          = 0;
+            dependency.srcStageMask        = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+            dependency.srcAccessMask       = 0;
+            dependency.dstStageMask        = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+            dependency.dstAccessMask       = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
             vk::VulkanStruct<VkRenderPassCreateInfo> renderPassInfo;
             renderPassInfo.attachmentCount = 1;
             renderPassInfo.pAttachments    = &colorAttachment;
             renderPassInfo.subpassCount    = 1;
             renderPassInfo.pSubpasses      = &subpass;
+            renderPassInfo.dependencyCount = 1;
+            renderPassInfo.pDependencies   = &dependency;
 
             if (vkCreateRenderPass(_device, &renderPassInfo, None, &_renderPass) != VK_SUCCESS) {
                 Panic("Failed to create render pass.");
@@ -244,18 +316,6 @@ namespace x {
             vk::VulkanStruct<VkPipelineInputAssemblyStateCreateInfo> inputAssembly;
             inputAssembly.topology               = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
             inputAssembly.primitiveRestartEnable = VK_FALSE;
-
-            // VkViewport viewport = {};
-            // viewport.x          = 0.0f;
-            // viewport.y          = 0.0f;
-            // viewport.width      = CAST<f32>(_swapChainExtent.width);
-            // viewport.height     = CAST<f32>(_swapChainExtent.height);
-            // viewport.minDepth   = 0.0f;
-            // viewport.maxDepth   = 1.0f;
-            //
-            // VkRect2D scissor = {};
-            // scissor.offset   = {0, 0};
-            // scissor.extent   = _swapChainExtent;
 
             std::vector<VkDynamicState> dynamicStates = {
               VK_DYNAMIC_STATE_VIEWPORT,
@@ -685,15 +745,22 @@ namespace x {
             CreateFramebuffers();
             CreateCommandPool();
             CreateCommandBuffer();
+            CreateSyncObjects();
         }
 
         void MainLoop() const {
             while (!glfwWindowShouldClose(_window)) {
                 glfwPollEvents();
+                DrawFrame();
             }
+
+            vkDeviceWaitIdle(_device);
         }
 
         void Cleanup() const {
+            vkDestroySemaphore(_device, _imageAvailable, None);
+            vkDestroySemaphore(_device, _renderFinished, None);
+            vkDestroyFence(_device, _inFlight, None);
             vkDestroyCommandPool(_device, _commandPool, None);
 
             for (const auto framebuffer : _frameBuffers) {

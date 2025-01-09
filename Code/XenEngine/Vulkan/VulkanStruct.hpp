@@ -155,6 +155,26 @@ namespace x::vk {
           VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
     };
 
+    template<>
+    struct VulkanTypeMap<VkSemaphoreCreateInfo> {
+        static constexpr VkStructureType value = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+    };
+
+    template<>
+    struct VulkanTypeMap<VkFenceCreateInfo> {
+        static constexpr VkStructureType value = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    };
+
+    template<>
+    struct VulkanTypeMap<VkSubmitInfo> {
+        static constexpr VkStructureType value = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    };
+
+    template<>
+    struct VulkanTypeMap<VkPresentInfoKHR> {
+        static constexpr VkStructureType value = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+    };
+
     template<typename T>
     class VulkanStruct : public T {
     public:
