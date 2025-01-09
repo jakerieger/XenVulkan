@@ -2,12 +2,43 @@
 // Created: 1/9/2025.
 //
 
+#include <vector>
+
 #include "VulkanContext.hpp"
 #include "VulkanStruct.hpp"
-#include <GLFW/glfw3.h>
+#include "Types.hpp"
+#include "Panic.inl"
 
 namespace x::vk {
-    VulkanContext::VulkanContext(GLFWwindow** window) {
+    static const std::vector kValidationLayers = {"VK_LAYER_KHRONOS_validation"};
+
+    static bool CheckValidationLayerSupport() {
+        u32 layerCount = 0;
+        vkEnumerateInstanceLayerProperties(&layerCount, None);
+        std::vector<VkLayerProperties> availableLayers;
+        vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
+        for (const auto name : kValidationLayers) {
+            bool found = false;
+            for (const auto& props : availableLayers) {
+                if (strcmp(name, props.layerName) == 0) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) return false;
+        }
+        return true;
+    }
+
+    VulkanContext::VulkanContext(GLFWwindow** window, const bool enableValidationLayers) {
+        if (enableValidationLayers) {
+            if (CheckValidationLayerSupport()) {
+                printf("Validation layers are supported.\n");
+            } else {
+                Panic("Failed to enable validation layers.");
+            }
+        }
+
         VulkanStruct<VkApplicationInfo> appInfo;
         appInfo.pApplicationName   = "Xen Engine";
         appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
@@ -22,7 +53,10 @@ namespace x::vk {
         createInfo.enabledExtensionCount   = extensionCount;
         createInfo.ppEnabledExtensionNames = extensions;
         createInfo.enabledLayerCount       = 0;
-        // TODO: Enable validation layers
+        if (enableValidationLayers) {
+            createInfo.enabledLayerCount   = CAST<u32>(kValidationLayers.size());
+            createInfo.ppEnabledLayerNames = kValidationLayers.data();
+        }
 
         if (vkCreateInstance(&createInfo, None, &_instance) != VK_SUCCESS) {
             Panic("Failed to create vulkan instance.");

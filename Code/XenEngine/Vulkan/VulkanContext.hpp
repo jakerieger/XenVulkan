@@ -8,8 +8,6 @@
 #include <GLFW/glfw3.h>
 #include <memory>
 
-#include "Types.hpp"
-#include "Panic.inl"
 #include "VulkanDevice.hpp"
 
 namespace x::vk {
@@ -19,7 +17,7 @@ namespace x::vk {
 
     class VulkanContext {
     public:
-        VulkanContext(GLFWwindow** window);
+        explicit VulkanContext(GLFWwindow** window, bool enableValidationLayers = false);
         ~VulkanContext();
 
         VkInstance GetInstance() const;
