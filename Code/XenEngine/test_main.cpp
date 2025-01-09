@@ -2,8 +2,8 @@
 // Created: 1/7/2025.
 //
 
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
+// #define GLFW_INCLUDE_VULKAN
+// #include <GLFW/glfw3.h>
 
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
@@ -15,6 +15,7 @@
 #include "Types.hpp"
 #include "Panic.inl"
 #include "Filesystem.hpp"
+#include "Window.hpp"
 #include "Vulkan/VulkanStruct.hpp"
 #include "xFX/Fx.hpp"
 
@@ -43,7 +44,8 @@ namespace x {
         const bool _enableValidationLayers = true;
 #endif
 
-        GLFWwindow* _window              = None;
+        // GLFWwindow* _window              = None;
+        std::unique_ptr<Window> _window;
         VkInstance _instance             = VK_NULL_HANDLE;
         VkPhysicalDevice _physicalDevice = VK_NULL_HANDLE;
         VkDevice _device                 = VK_NULL_HANDLE;
@@ -490,7 +492,7 @@ namespace x {
                 return capabilities.currentExtent;
             }
             i32 width, height;
-            glfwGetFramebufferSize(_window, &width, &height);
+            glfwGetFramebufferSize(_window->GetWindow(), &width, &height);
             VkExtent2D extent = {CAST<u32>(width), CAST<u32>(height)};
             extent.width      = std::clamp(extent.width,
                                       capabilities.minImageExtent.width,
@@ -561,7 +563,8 @@ namespace x {
         }
 
         void CreateSurface() {
-            if (glfwCreateWindowSurface(_instance, _window, None, &_surface) != VK_SUCCESS) {
+            if (glfwCreateWindowSurface(_instance, _window->GetWindow(), None, &_surface) !=
+                VK_SUCCESS) {
                 Panic("Failed to create window surface.");
             }
             std::cout << "Created window surface.\n";
@@ -726,11 +729,7 @@ namespace x {
         }
 
         void InitWindow() {
-            glfwInit();
-            glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-            glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
-            _window = glfwCreateWindow(800, 600, "Vulkan Test", None, None);
-            if (!_window) { Panic("Failed to create GLFW window."); }
+            _window = std::make_unique<Window>(800, 600, "Vulkan Test");
         }
 
         void InitVulkan() {
@@ -749,15 +748,15 @@ namespace x {
         }
 
         void MainLoop() const {
-            while (!glfwWindowShouldClose(_window)) {
-                glfwPollEvents();
+            while (!_window->ShouldClose()) {
+                _window->PollEvents();
                 DrawFrame();
             }
 
             vkDeviceWaitIdle(_device);
         }
 
-        void Cleanup() const {
+        void Cleanup() {
             vkDestroySemaphore(_device, _imageAvailable, None);
             vkDestroySemaphore(_device, _renderFinished, None);
             vkDestroyFence(_device, _inFlight, None);
@@ -779,8 +778,8 @@ namespace x {
             vkDestroySurfaceKHR(_instance, _surface, None);
             vkDestroyDevice(_device, None);
             vkDestroyInstance(_instance, None);
-            glfwDestroyWindow(_window);
-            glfwTerminate();
+
+            _window.reset();
         }
     };
 }  // namespace x
