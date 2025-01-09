@@ -7,6 +7,7 @@ add_library(Xen SHARED
         ${COMMON}/Filesystem.cpp
         ${ENGINE}/XenEngine.hpp
         ${ENGINE}/XenEngine.cpp
+        ${ENGINE}/Vulkan/VulkanStruct.hpp
 )
 
 add_executable(test_main

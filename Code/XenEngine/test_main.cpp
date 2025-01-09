@@ -15,12 +15,14 @@
 #include "Types.hpp"
 #include "Panic.inl"
 #include "Filesystem.hpp"
+#include "Vulkan/VulkanStruct.hpp"
 
 #include <vector>
 #include <optional>
 #include <set>
 #include <limits>
 #include <algorithm>
+#include <queue>
 
 namespace x {
     using namespace Filesystem;
@@ -51,10 +53,11 @@ namespace x {
         VkSwapchainKHR _swapChain        = VK_NULL_HANDLE;
         VkFormat _swapChainFormat        = VK_FORMAT_UNDEFINED;
         VkExtent2D _swapChainExtent      = {0, 0};
-
+        VkPipelineLayout _pipelineLayout = VK_NULL_HANDLE;
+        VkRenderPass _renderPass         = VK_NULL_HANDLE;
+        VkPipeline _pipeline             = VK_NULL_HANDLE;
         std::vector<VkImage> _swapChainImages;
         std::vector<VkImageView> _swapChainViews;
-
         const std::vector<cstr> _validationLayers = {"VK_LAYER_KHRONOS_validation"};
         const std::vector<cstr> _deviceExtensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
 
@@ -77,23 +80,198 @@ namespace x {
             std::vector<VkPresentModeKHR> presentModes;
         };
 
-        void CreatePipeline() {}
+        void CreateRenderPass() {
+            VkAttachmentDescription colorAttachment = {};
+            colorAttachment.format                  = _swapChainFormat;
+            colorAttachment.samples                 = VK_SAMPLE_COUNT_1_BIT;
+            colorAttachment.loadOp                  = VK_ATTACHMENT_LOAD_OP_CLEAR;
+            colorAttachment.storeOp                 = VK_ATTACHMENT_STORE_OP_STORE;
+            colorAttachment.stencilLoadOp           = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+            colorAttachment.stencilStoreOp          = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+            colorAttachment.initialLayout           = VK_IMAGE_LAYOUT_UNDEFINED;
+            colorAttachment.finalLayout             = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+            VkAttachmentReference colorAttachmentRef = {};
+            colorAttachmentRef.attachment            = 0;
+            colorAttachmentRef.layout                = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+            VkSubpassDescription subpass = {};
+            subpass.pipelineBindPoint    = VK_PIPELINE_BIND_POINT_GRAPHICS;
+            subpass.colorAttachmentCount = 1;
+            subpass.pColorAttachments    = &colorAttachmentRef;
+
+            vk::VulkanStruct<VkRenderPassCreateInfo> renderPassInfo;
+            renderPassInfo.attachmentCount = 1;
+            renderPassInfo.pAttachments    = &colorAttachment;
+            renderPassInfo.subpassCount    = 1;
+            renderPassInfo.pSubpasses      = &subpass;
+
+            if (vkCreateRenderPass(_device, &renderPassInfo, nullptr, &_renderPass) != VK_SUCCESS) {
+                Panic("Failed to create render pass.");
+            }
+
+            std::cout << "Created render pass.\n";
+        }
+
+        VkShaderModule CreateShaderModule(const std::vector<u8>& bytecode) const {
+            vk::VulkanStruct<VkShaderModuleCreateInfo> createInfo;
+            createInfo.codeSize = bytecode.size();
+            createInfo.pCode    = RCAST<const u32*>(
+              bytecode.data());  // Has to be cast to const 32-bit unsigned for some reason?
+            VkShaderModule module;
+            if (vkCreateShaderModule(_device, &createInfo, nullptr, &module) != VK_SUCCESS) {
+                Panic("Failed to create shader module.");
+            }
+            return module;
+        }
+
+        void CreatePipeline() {
+            const auto vertCode   = FileReader::ReadAllBytes("Shaders/Unlit.vert.spv");
+            const auto fragCode   = FileReader::ReadAllBytes("Shaders/Unlit.frag.spv");
+            const auto vertModule = CreateShaderModule(vertCode);
+            const auto fragModule = CreateShaderModule(fragCode);
+
+            vk::VulkanStruct<VkPipelineShaderStageCreateInfo> vertCreateInfo;
+            vertCreateInfo.stage  = VK_SHADER_STAGE_VERTEX_BIT;
+            vertCreateInfo.module = vertModule;
+            vertCreateInfo.pName  = "main";  // main entry point
+            vertCreateInfo.pSpecializationInfo =
+              nullptr;  // Allows us to update constants at compile time for branch optimization
+
+            vk::VulkanStruct<VkPipelineShaderStageCreateInfo> fragCreateInfo;
+            fragCreateInfo.stage  = VK_SHADER_STAGE_FRAGMENT_BIT;
+            fragCreateInfo.module = fragModule;
+            fragCreateInfo.pName  = "main";  // main entry point
+            fragCreateInfo.pSpecializationInfo =
+              nullptr;  // Allows us to update constants at compile time for branch optimization
+
+            VkPipelineShaderStageCreateInfo stages[] = {vertCreateInfo, fragCreateInfo};
+
+            vk::VulkanStruct<VkPipelineVertexInputStateCreateInfo> vertexInputInfo;
+            vertexInputInfo.vertexBindingDescriptionCount   = 0;
+            vertexInputInfo.pVertexBindingDescriptions      = nullptr;  // Optional
+            vertexInputInfo.vertexAttributeDescriptionCount = 0;
+            vertexInputInfo.pVertexAttributeDescriptions    = nullptr;  // Optional
+
+            vk::VulkanStruct<VkPipelineInputAssemblyStateCreateInfo> inputAssembly;
+            inputAssembly.topology               = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+            inputAssembly.primitiveRestartEnable = VK_FALSE;
+
+            VkViewport viewport = {};
+            viewport.x          = 0.0f;
+            viewport.y          = 0.0f;
+            viewport.width      = CAST<f32>(_swapChainExtent.width);
+            viewport.height     = CAST<f32>(_swapChainExtent.height);
+            viewport.minDepth   = 0.0f;
+            viewport.maxDepth   = 1.0f;
+
+            VkRect2D scissor = {};
+            scissor.offset   = {0, 0};
+            scissor.extent   = _swapChainExtent;
+
+            // Viewport and Scissor states are STATIC in this instance.
+            // See:
+            // https://vulkan-tutorial.com/en/Drawing_a_triangle/Graphics_pipeline_basics/Fixed_functions
+            // for enabling dynamic state for these
+            vk::VulkanStruct<VkPipelineViewportStateCreateInfo> viewportState;
+            viewportState.viewportCount = 1;
+            viewportState.pViewports    = &viewport;
+            viewportState.scissorCount  = 1;
+            viewportState.pScissors     = &scissor;
+
+            vk::VulkanStruct<VkPipelineRasterizationStateCreateInfo> rasterizer;
+            rasterizer.depthClampEnable = VK_FALSE;
+            rasterizer.lineWidth        = 1.0f;
+            rasterizer.cullMode         = VK_CULL_MODE_BACK_BIT;
+            rasterizer.frontFace        = VK_FRONT_FACE_CLOCKWISE;
+            rasterizer.depthBiasEnable  = VK_FALSE;
+
+            // Using any mode other than FILL requires enabling a GPU feature. (sigh)
+            rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
+
+            // Enabling this blocks geometry from getting passed to the rasterizer.
+            // Effecttively disables any output to the framebuffer.
+            rasterizer.rasterizerDiscardEnable = VK_FALSE;
+
+            vk::VulkanStruct<VkPipelineMultisampleStateCreateInfo> multisampling;
+            multisampling.sampleShadingEnable  = VK_FALSE;
+            multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+            // Enable alpha-blending by default
+            VkPipelineColorBlendAttachmentState colorBlendAttachment = {};
+            colorBlendAttachment.colorWriteMask =
+              VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT |
+              VK_COLOR_COMPONENT_A_BIT;
+            colorBlendAttachment.blendEnable         = VK_TRUE;
+            colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+            colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+            colorBlendAttachment.colorBlendOp        = VK_BLEND_OP_ADD;
+            colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+            colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+            colorBlendAttachment.alphaBlendOp        = VK_BLEND_OP_ADD;
+
+            vk::VulkanStruct<VkPipelineColorBlendStateCreateInfo> colorBlending;
+            colorBlending.logicOpEnable = VK_FALSE;  // If enabled, uses bitwise combination
+            colorBlending.attachmentCount =
+              1;  // Must match the colorAttachmentCount in the subpass
+            colorBlending.pAttachments =
+              &colorBlendAttachment;  // Point to the attachment state you defined
+
+            // Create an empty layout for now since none of our shaders require uniforms
+            vk::VulkanStruct<VkPipelineLayoutCreateInfo> pipelineLayoutInfo;
+
+            if (vkCreatePipelineLayout(_device, &pipelineLayoutInfo, nullptr, &_pipelineLayout) !=
+                VK_SUCCESS) {
+                Panic("Failed to create pipeline layout.");
+            }
+
+            vk::VulkanStruct<VkGraphicsPipelineCreateInfo> pipelineInfo;
+            pipelineInfo.stageCount          = 2;
+            pipelineInfo.pStages             = stages;
+            pipelineInfo.pVertexInputState   = &vertexInputInfo;
+            pipelineInfo.pInputAssemblyState = &inputAssembly;
+            pipelineInfo.pViewportState      = &viewportState;
+            pipelineInfo.pRasterizationState = &rasterizer;
+            pipelineInfo.pMultisampleState   = &multisampling;
+            pipelineInfo.pDepthStencilState  = nullptr;  // Optional
+            pipelineInfo.pColorBlendState    = &colorBlending;
+            pipelineInfo.pDynamicState       = nullptr;  //&dynamicState;
+            pipelineInfo.layout              = _pipelineLayout;
+            pipelineInfo.renderPass          = _renderPass;
+            pipelineInfo.subpass             = 0;
+            pipelineInfo.basePipelineHandle  = VK_NULL_HANDLE;  // Optional
+            pipelineInfo.basePipelineIndex   = -1;              // Optional
+            // pipelineInfo.flags               = VK_PIPELINE_CREATE_DERIVATIVE_BIT;
+
+            if (vkCreateGraphicsPipelines(_device,
+                                          VK_NULL_HANDLE,
+                                          1,
+                                          &pipelineInfo,
+                                          nullptr,
+                                          &_pipeline) != VK_SUCCESS) {
+                Panic("Failed to create pipeline.");
+            }
+
+            vkDestroyShaderModule(_device, vertModule, nullptr);
+            vkDestroyShaderModule(_device, fragModule, nullptr);
+
+            std::cout << "Created pipeline.\n";
+        }
 
         void CreateImageViews() {
             _swapChainViews.resize(_swapChainImages.size());
             for (size_t i = 0; i < _swapChainImages.size(); i++) {
-                VkImageViewCreateInfo createInfo         = {};
-                createInfo.sType                         = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-                createInfo.image                         = _swapChainImages.at(i);
-                createInfo.viewType                      = VK_IMAGE_VIEW_TYPE_2D;
-                createInfo.format                        = _swapChainFormat;
-                createInfo.components.r                  = VK_COMPONENT_SWIZZLE_IDENTITY;
-                createInfo.components.g                  = VK_COMPONENT_SWIZZLE_IDENTITY;
-                createInfo.components.b                  = VK_COMPONENT_SWIZZLE_IDENTITY;
-                createInfo.components.a                  = VK_COMPONENT_SWIZZLE_IDENTITY;
-                createInfo.subresourceRange.aspectMask   = VK_IMAGE_ASPECT_COLOR_BIT;
-                createInfo.subresourceRange.baseMipLevel = 0;
-                createInfo.subresourceRange.levelCount   = 1;
+                vk::VulkanStruct<VkImageViewCreateInfo> createInfo;
+                createInfo.image                           = _swapChainImages.at(i);
+                createInfo.viewType                        = VK_IMAGE_VIEW_TYPE_2D;
+                createInfo.format                          = _swapChainFormat;
+                createInfo.components.r                    = VK_COMPONENT_SWIZZLE_IDENTITY;
+                createInfo.components.g                    = VK_COMPONENT_SWIZZLE_IDENTITY;
+                createInfo.components.b                    = VK_COMPONENT_SWIZZLE_IDENTITY;
+                createInfo.components.a                    = VK_COMPONENT_SWIZZLE_IDENTITY;
+                createInfo.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
+                createInfo.subresourceRange.baseMipLevel   = 0;
+                createInfo.subresourceRange.levelCount     = 1;
                 createInfo.subresourceRange.baseArrayLayer = 0;
                 createInfo.subresourceRange.layerCount     = 1;
                 if (vkCreateImageView(_device, &createInfo, nullptr, &_swapChainViews[i]) !=
@@ -101,6 +279,8 @@ namespace x {
                     Panic("Failed to create image views.");
                 }
             }
+
+            printf("Created (%llu) image views.\n", _swapChainImages.size());
         }
 
         void CreateSwapChain() {
@@ -116,15 +296,15 @@ namespace x {
             const auto indices                  = FindQueueFamilies(_physicalDevice);
             const auto [graphics, presentation] = indices.Values();
             const u32 familyIndices[]           = {graphics, presentation};
-            VkSwapchainCreateInfoKHR createInfo = {};
-            createInfo.sType                    = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
-            createInfo.surface                  = _surface;
-            createInfo.minImageCount            = imageCount;
-            createInfo.imageFormat              = surfaceFormat.format;
-            createInfo.imageColorSpace          = surfaceFormat.colorSpace;
-            createInfo.imageExtent              = extent;
-            createInfo.imageArrayLayers         = 1;
-            createInfo.imageUsage               = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+
+            vk::VulkanStruct<VkSwapchainCreateInfoKHR> createInfo;
+            createInfo.surface          = _surface;
+            createInfo.minImageCount    = imageCount;
+            createInfo.imageFormat      = surfaceFormat.format;
+            createInfo.imageColorSpace  = surfaceFormat.colorSpace;
+            createInfo.imageExtent      = extent;
+            createInfo.imageArrayLayers = 1;
+            createInfo.imageUsage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
             if (graphics != presentation) {
                 createInfo.imageSharingMode      = VK_SHARING_MODE_CONCURRENT;
                 createInfo.queueFamilyIndexCount = 2;
@@ -244,18 +424,16 @@ namespace x {
             std::set uniqueQueueFamilies   = {graphics, present};
             f32 queuePriority              = 1.0f;
             for (u32 queueFamily : uniqueQueueFamilies) {
-                VkDeviceQueueCreateInfo info = {};
-                info.sType                   = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-                info.queueFamilyIndex        = queueFamily;
-                info.queueCount              = 1;
-                info.pQueuePriorities        = &queuePriority;
+                vk::VulkanStruct<VkDeviceQueueCreateInfo> info;
+                info.queueFamilyIndex = queueFamily;
+                info.queueCount       = 1;
+                info.pQueuePriorities = &queuePriority;
                 queueCreateInfos.push_back(info);
             }
 
             VkPhysicalDeviceFeatures deviceFeatures = {};
 
-            VkDeviceCreateInfo createInfo      = {};
-            createInfo.sType                   = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+            vk::VulkanStruct<VkDeviceCreateInfo> createInfo;
             createInfo.pQueueCreateInfos       = queueCreateInfos.data();
             createInfo.queueCreateInfoCount    = CAST<u32>(queueCreateInfos.size());
             createInfo.pEnabledFeatures        = &deviceFeatures;
@@ -369,17 +547,15 @@ namespace x {
                 }
             }
 
-            VkApplicationInfo appInfo  = {};
-            appInfo.sType              = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+            vk::VulkanStruct<VkApplicationInfo> appInfo;
             appInfo.pApplicationName   = "XenVulkan";
             appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
             appInfo.pEngineName        = "Xen";
             appInfo.engineVersion      = VK_MAKE_VERSION(0, 0, 1);
             appInfo.apiVersion         = VK_API_VERSION_1_0;
 
-            VkInstanceCreateInfo createInfo = {};
-            createInfo.sType                = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-            createInfo.pApplicationInfo     = &appInfo;
+            vk::VulkanStruct<VkInstanceCreateInfo> createInfo;
+            createInfo.pApplicationInfo = &appInfo;
 
             u32 glfwExtCount                   = 0;
             cstr* glfwExtensions               = glfwGetRequiredInstanceExtensions(&glfwExtCount);
@@ -413,6 +589,7 @@ namespace x {
             CreateLogicalDevice();
             CreateSwapChain();
             CreateImageViews();
+            CreateRenderPass();
             CreatePipeline();
         }
 
@@ -423,6 +600,9 @@ namespace x {
         }
 
         void Cleanup() const {
+            vkDestroyPipeline(_device, _pipeline, nullptr);
+            vkDestroyPipelineLayout(_device, _pipelineLayout, nullptr);
+            vkDestroyRenderPass(_device, _renderPass, nullptr);
             for (const auto view : _swapChainViews) {
                 vkDestroyImageView(_device, view, nullptr);
             }
