@@ -10,6 +10,18 @@ namespace x::vk {
     template<typename T>
     struct VulkanTypeMap;
 
+    template<typename, typename = void>
+    struct HasSType : std::false_type {};
+
+    template<typename T>
+    struct HasSType<T, std::void_t<decltype(T::sType)>> : std::true_type {};
+
+    template<typename, typename = void>
+    struct HasVulkanTypeMap : std::false_type {};
+
+    template<typename T>
+    struct HasVulkanTypeMap<T, std::void_t<decltype(VulkanTypeMap<T>::value)>> : std::true_type {};
+
     // Application Info
     template<>
     struct VulkanTypeMap<VkApplicationInfo> {
@@ -146,6 +158,13 @@ namespace x::vk {
     template<typename T>
     class VulkanStruct : public T {
     public:
+        static_assert(
+          HasSType<T>::value,
+          "Type does not have an sType member. Are you sure this is a Vulkan structure type?");
+
+        static_assert(HasVulkanTypeMap<T>::value,
+                      "No VulkanTypeMap specialization exists for this type.");
+
         VulkanStruct() : T {} {
             this->sType = VulkanTypeMap<T>::value;
         }
