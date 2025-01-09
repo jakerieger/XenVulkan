@@ -43,7 +43,7 @@ namespace x {
         const bool _enableValidationLayers = true;
 #endif
 
-        GLFWwindow* _window              = nullptr;
+        GLFWwindow* _window              = None;
         VkInstance _instance             = VK_NULL_HANDLE;
         VkPhysicalDevice _physicalDevice = VK_NULL_HANDLE;
         VkDevice _device                 = VK_NULL_HANDLE;
@@ -56,8 +56,10 @@ namespace x {
         VkPipelineLayout _pipelineLayout = VK_NULL_HANDLE;
         VkRenderPass _renderPass         = VK_NULL_HANDLE;
         VkPipeline _pipeline             = VK_NULL_HANDLE;
+        VkCommandPool _commandPool       = VK_NULL_HANDLE;
         std::vector<VkImage> _swapChainImages;
         std::vector<VkImageView> _swapChainViews;
+        std::vector<VkFramebuffer> _frameBuffers;
         const std::vector<cstr> _validationLayers = {"VK_LAYER_KHRONOS_validation"};
         const std::vector<cstr> _deviceExtensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
 
@@ -79,6 +81,36 @@ namespace x {
             std::vector<VkSurfaceFormatKHR> formats;
             std::vector<VkPresentModeKHR> presentModes;
         };
+
+        void CreateCommandPool() {
+            auto indices = FindQueueFamilies(_physicalDevice);
+            vk::VulkanStruct<VkCommandPoolCreateInfo> poolInfo;
+            poolInfo.flags            = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+            poolInfo.queueFamilyIndex = indices.Values().first;
+            if (vkCreateCommandPool(_device, &poolInfo, None, &_commandPool) != VK_SUCCESS) {
+                Panic("Failed to create command pool.");
+            }
+            printf("Created command pool.\n");
+        }
+
+        void CreateFramebuffers() {
+            _frameBuffers.resize(_swapChainViews.size());
+            for (size_t i = 0; i < _swapChainViews.size(); i++) {
+                const VkImageView attachments[] = {_swapChainViews[i]};
+                vk::VulkanStruct<VkFramebufferCreateInfo> framebufferInfo;
+                framebufferInfo.renderPass      = _renderPass;
+                framebufferInfo.attachmentCount = 1;
+                framebufferInfo.pAttachments    = attachments;
+                framebufferInfo.width           = _swapChainExtent.width;
+                framebufferInfo.height          = _swapChainExtent.height;
+                framebufferInfo.layers          = 1;
+                if (vkCreateFramebuffer(_device, &framebufferInfo, None, &_frameBuffers[i]) !=
+                    VK_SUCCESS) {
+                    Panic("Failed to create framebuffer for index %llu", i);
+                }
+            }
+            printf("Created (%llu) framebuffers.\n", _frameBuffers.size());
+        }
 
         void CreateRenderPass() {
             VkAttachmentDescription colorAttachment = {};
@@ -106,7 +138,7 @@ namespace x {
             renderPassInfo.subpassCount    = 1;
             renderPassInfo.pSubpasses      = &subpass;
 
-            if (vkCreateRenderPass(_device, &renderPassInfo, nullptr, &_renderPass) != VK_SUCCESS) {
+            if (vkCreateRenderPass(_device, &renderPassInfo, None, &_renderPass) != VK_SUCCESS) {
                 Panic("Failed to create render pass.");
             }
 
@@ -119,7 +151,7 @@ namespace x {
             createInfo.pCode    = RCAST<const u32*>(
               bytecode.data());  // Has to be cast to const 32-bit unsigned for some reason?
             VkShaderModule module;
-            if (vkCreateShaderModule(_device, &createInfo, nullptr, &module) != VK_SUCCESS) {
+            if (vkCreateShaderModule(_device, &createInfo, None, &module) != VK_SUCCESS) {
                 Panic("Failed to create shader module.");
             }
             return module;
@@ -136,22 +168,22 @@ namespace x {
             vertCreateInfo.module = vertModule;
             vertCreateInfo.pName  = "main";  // main entry point
             vertCreateInfo.pSpecializationInfo =
-              nullptr;  // Allows us to update constants at compile time for branch optimization
+              None;  // Allows us to update constants at compile time for branch optimization
 
             vk::VulkanStruct<VkPipelineShaderStageCreateInfo> fragCreateInfo;
             fragCreateInfo.stage  = VK_SHADER_STAGE_FRAGMENT_BIT;
             fragCreateInfo.module = fragModule;
             fragCreateInfo.pName  = "main";  // main entry point
             fragCreateInfo.pSpecializationInfo =
-              nullptr;  // Allows us to update constants at compile time for branch optimization
+              None;  // Allows us to update constants at compile time for branch optimization
 
             VkPipelineShaderStageCreateInfo stages[] = {vertCreateInfo, fragCreateInfo};
 
             vk::VulkanStruct<VkPipelineVertexInputStateCreateInfo> vertexInputInfo;
             vertexInputInfo.vertexBindingDescriptionCount   = 0;
-            vertexInputInfo.pVertexBindingDescriptions      = nullptr;  // Optional
+            vertexInputInfo.pVertexBindingDescriptions      = None;  // Optional
             vertexInputInfo.vertexAttributeDescriptionCount = 0;
-            vertexInputInfo.pVertexAttributeDescriptions    = nullptr;  // Optional
+            vertexInputInfo.pVertexAttributeDescriptions    = None;  // Optional
 
             vk::VulkanStruct<VkPipelineInputAssemblyStateCreateInfo> inputAssembly;
             inputAssembly.topology               = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
@@ -220,7 +252,7 @@ namespace x {
             // Create an empty layout for now since none of our shaders require uniforms
             vk::VulkanStruct<VkPipelineLayoutCreateInfo> pipelineLayoutInfo;
 
-            if (vkCreatePipelineLayout(_device, &pipelineLayoutInfo, nullptr, &_pipelineLayout) !=
+            if (vkCreatePipelineLayout(_device, &pipelineLayoutInfo, None, &_pipelineLayout) !=
                 VK_SUCCESS) {
                 Panic("Failed to create pipeline layout.");
             }
@@ -233,9 +265,9 @@ namespace x {
             pipelineInfo.pViewportState      = &viewportState;
             pipelineInfo.pRasterizationState = &rasterizer;
             pipelineInfo.pMultisampleState   = &multisampling;
-            pipelineInfo.pDepthStencilState  = nullptr;  // Optional
+            pipelineInfo.pDepthStencilState  = None;  // Optional
             pipelineInfo.pColorBlendState    = &colorBlending;
-            pipelineInfo.pDynamicState       = nullptr;  //&dynamicState;
+            pipelineInfo.pDynamicState       = None;  //&dynamicState;
             pipelineInfo.layout              = _pipelineLayout;
             pipelineInfo.renderPass          = _renderPass;
             pipelineInfo.subpass             = 0;
@@ -247,13 +279,13 @@ namespace x {
                                           VK_NULL_HANDLE,
                                           1,
                                           &pipelineInfo,
-                                          nullptr,
+                                          None,
                                           &_pipeline) != VK_SUCCESS) {
                 Panic("Failed to create pipeline.");
             }
 
-            vkDestroyShaderModule(_device, vertModule, nullptr);
-            vkDestroyShaderModule(_device, fragModule, nullptr);
+            vkDestroyShaderModule(_device, vertModule, None);
+            vkDestroyShaderModule(_device, fragModule, None);
 
             std::cout << "Created pipeline.\n";
         }
@@ -274,7 +306,7 @@ namespace x {
                 createInfo.subresourceRange.levelCount     = 1;
                 createInfo.subresourceRange.baseArrayLayer = 0;
                 createInfo.subresourceRange.layerCount     = 1;
-                if (vkCreateImageView(_device, &createInfo, nullptr, &_swapChainViews[i]) !=
+                if (vkCreateImageView(_device, &createInfo, None, &_swapChainViews[i]) !=
                     VK_SUCCESS) {
                     Panic("Failed to create image views.");
                 }
@@ -311,8 +343,8 @@ namespace x {
                 createInfo.pQueueFamilyIndices   = familyIndices;
             } else {
                 createInfo.imageSharingMode      = VK_SHARING_MODE_EXCLUSIVE;
-                createInfo.queueFamilyIndexCount = 0;        // Optional
-                createInfo.pQueueFamilyIndices   = nullptr;  // Optional
+                createInfo.queueFamilyIndexCount = 0;     // Optional
+                createInfo.pQueueFamilyIndices   = None;  // Optional
             }
             createInfo.preTransform   = supportInfo.capabilities.currentTransform;
             createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
@@ -320,11 +352,11 @@ namespace x {
             createInfo.clipped        = VK_TRUE;
             createInfo.oldSwapchain   = VK_NULL_HANDLE;
 
-            if (vkCreateSwapchainKHR(_device, &createInfo, nullptr, &_swapChain) != VK_SUCCESS) {
+            if (vkCreateSwapchainKHR(_device, &createInfo, None, &_swapChain) != VK_SUCCESS) {
                 Panic("Failed to create swap chain.");
             }
 
-            vkGetSwapchainImagesKHR(_device, _swapChain, &imageCount, nullptr);
+            vkGetSwapchainImagesKHR(_device, _swapChain, &imageCount, None);
             _swapChainImages.resize(imageCount);
             vkGetSwapchainImagesKHR(_device, _swapChain, &imageCount, _swapChainImages.data());
 
@@ -374,13 +406,13 @@ namespace x {
             vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, _surface, &info.capabilities);
 
             u32 fmtCount;
-            vkGetPhysicalDeviceSurfaceFormatsKHR(device, _surface, &fmtCount, nullptr);
+            vkGetPhysicalDeviceSurfaceFormatsKHR(device, _surface, &fmtCount, None);
             if (fmtCount == 0) { Panic("No surface formats found for selected GPU and surface."); }
             info.formats.resize(fmtCount);
             vkGetPhysicalDeviceSurfaceFormatsKHR(device, _surface, &fmtCount, info.formats.data());
 
             u32 presentCount;
-            vkGetPhysicalDeviceSurfacePresentModesKHR(device, _surface, &presentCount, nullptr);
+            vkGetPhysicalDeviceSurfacePresentModesKHR(device, _surface, &presentCount, None);
             if (presentCount == 0) {
                 Panic("No presentation modes found for selected GPU and surface.");
             }
@@ -396,10 +428,10 @@ namespace x {
         // Checks for required extension support
         bool CheckDeviceExtSupport(const VkPhysicalDevice device) const {
             u32 extCount;
-            vkEnumerateDeviceExtensionProperties(device, nullptr, &extCount, nullptr);
+            vkEnumerateDeviceExtensionProperties(device, None, &extCount, None);
             std::vector<VkExtensionProperties> availableExtensions(extCount);
             vkEnumerateDeviceExtensionProperties(device,
-                                                 nullptr,
+                                                 None,
                                                  &extCount,
                                                  availableExtensions.data());
             std::set<str> requiredExtensions(_deviceExtensions.begin(), _deviceExtensions.end());
@@ -410,7 +442,7 @@ namespace x {
         }
 
         void CreateSurface() {
-            if (glfwCreateWindowSurface(_instance, _window, nullptr, &_surface) != VK_SUCCESS) {
+            if (glfwCreateWindowSurface(_instance, _window, None, &_surface) != VK_SUCCESS) {
                 Panic("Failed to create window surface.");
             }
             std::cout << "Created window surface.\n";
@@ -446,7 +478,7 @@ namespace x {
                 createInfo.enabledLayerCount = 0;
             }
 
-            if (vkCreateDevice(_physicalDevice, &createInfo, nullptr, &_device) != VK_SUCCESS) {
+            if (vkCreateDevice(_physicalDevice, &createInfo, None, &_device) != VK_SUCCESS) {
                 Panic("Failed to create Vulkan logical device.");
             }
 
@@ -461,7 +493,7 @@ namespace x {
             QueueFamilyIndices indices;
 
             u32 queueFamilyCount = 0;
-            vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
+            vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, None);
             std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
             vkGetPhysicalDeviceQueueFamilyProperties(device,
                                                      &queueFamilyCount,
@@ -503,7 +535,7 @@ namespace x {
         // Queries for and selects an appropriate GPU (if one exists)
         void GetPhysicalDevice() {
             u32 deviceCount = 0;
-            vkEnumeratePhysicalDevices(_instance, &deviceCount, nullptr);
+            vkEnumeratePhysicalDevices(_instance, &deviceCount, None);
             if (!deviceCount) { Panic("Failed to find a Vulkan-compatible GPU."); }
             std::vector<VkPhysicalDevice> devices(deviceCount);
             vkEnumeratePhysicalDevices(_instance, &deviceCount, devices.data());
@@ -520,7 +552,7 @@ namespace x {
 
         bool CheckValidationLayerSupport() const {
             u32 layerCount;
-            vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
+            vkEnumerateInstanceLayerProperties(&layerCount, None);
             std::vector<VkLayerProperties> availableLayers(layerCount);
             vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
 
@@ -567,7 +599,7 @@ namespace x {
                 createInfo.ppEnabledLayerNames = _validationLayers.data();
             }
 
-            if (vkCreateInstance(&createInfo, nullptr, &_instance) != VK_SUCCESS) {
+            if (vkCreateInstance(&createInfo, None, &_instance) != VK_SUCCESS) {
                 Panic("Failed to create Vulkan instance.");
             }
 
@@ -578,7 +610,7 @@ namespace x {
             glfwInit();
             glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
             glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
-            _window = glfwCreateWindow(800, 600, "Vulkan Test", nullptr, nullptr);
+            _window = glfwCreateWindow(800, 600, "Vulkan Test", None, None);
             if (!_window) { Panic("Failed to create GLFW window."); }
         }
 
@@ -591,6 +623,8 @@ namespace x {
             CreateImageViews();
             CreateRenderPass();
             CreatePipeline();
+            CreateFramebuffers();
+            CreateCommandPool();
         }
 
         void MainLoop() const {
@@ -600,16 +634,24 @@ namespace x {
         }
 
         void Cleanup() const {
-            vkDestroyPipeline(_device, _pipeline, nullptr);
-            vkDestroyPipelineLayout(_device, _pipelineLayout, nullptr);
-            vkDestroyRenderPass(_device, _renderPass, nullptr);
-            for (const auto view : _swapChainViews) {
-                vkDestroyImageView(_device, view, nullptr);
+            vkDestroyCommandPool(_device, _commandPool, None);
+
+            for (const auto framebuffer : _frameBuffers) {
+                vkDestroyFramebuffer(_device, framebuffer, None);
             }
-            vkDestroySwapchainKHR(_device, _swapChain, nullptr);
-            vkDestroySurfaceKHR(_instance, _surface, nullptr);
-            vkDestroyDevice(_device, nullptr);
-            vkDestroyInstance(_instance, nullptr);
+
+            vkDestroyPipeline(_device, _pipeline, None);
+            vkDestroyPipelineLayout(_device, _pipelineLayout, None);
+            vkDestroyRenderPass(_device, _renderPass, None);
+
+            for (const auto view : _swapChainViews) {
+                vkDestroyImageView(_device, view, None);
+            }
+
+            vkDestroySwapchainKHR(_device, _swapChain, None);
+            vkDestroySurfaceKHR(_instance, _surface, None);
+            vkDestroyDevice(_device, None);
+            vkDestroyInstance(_instance, None);
             glfwDestroyWindow(_window);
             glfwTerminate();
         }

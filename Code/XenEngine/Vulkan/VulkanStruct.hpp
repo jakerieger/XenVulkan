@@ -112,6 +112,16 @@ namespace x::vk {
           VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
     };
 
+    template<>
+    struct VulkanTypeMap<VkFramebufferCreateInfo> {
+        static constexpr VkStructureType value = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+    };
+
+    template<>
+    struct VulkanTypeMap<VkCommandPoolCreateInfo> {
+        static constexpr VkStructureType value = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    };
+
     template<typename T>
     class VulkanStruct : public T {
     public:

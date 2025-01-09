@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <optional>
 #include <string>
 
 namespace x {
@@ -30,6 +31,9 @@ namespace x {
     using cstr = const char*;
     using str  = std::string;
     using wstr = std::wstring;
+
+    constexpr auto None            = nullptr;
+    constexpr std::nullopt_t Empty = std::nullopt;
 
 #define CAST static_cast
 #define CCAST const_cast
