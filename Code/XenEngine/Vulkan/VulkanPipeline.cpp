@@ -16,6 +16,10 @@ namespace x::vk {
         return _pipeline;
     }
 
+    VkPipelineLayout VulkanPipeline::LayoutHandle() const {
+        return _layout;
+    }
+
     void VulkanPipeline::Cleanup() {
         if (_device) {
             if (_pipeline) {

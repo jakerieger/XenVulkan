@@ -175,6 +175,12 @@ namespace x::vk {
         static constexpr VkStructureType value = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
     };
 
+    template<>
+    struct VulkanTypeMap<VkPipelineDepthStencilStateCreateInfo> {
+        static constexpr VkStructureType value =
+          VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+    };
+
     template<typename T>
     class VulkanStruct : public T {
     public:

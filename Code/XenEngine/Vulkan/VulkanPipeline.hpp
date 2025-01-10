@@ -31,6 +31,7 @@ namespace x::vk {
 
         // Getter for the internal pipeline handle
         [[nodiscard]] VkPipeline Handle() const;
+        [[nodiscard]] VkPipelineLayout LayoutHandle() const;
 
     private:
         VkDevice _device;

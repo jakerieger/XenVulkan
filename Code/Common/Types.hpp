@@ -8,6 +8,10 @@
 #include <cstring>
 #include <optional>
 #include <string>
+#include <vector>
+#include <array>
+#include <unordered_map>
+#include <memory>
 
 namespace x {
     using u8  = uint8_t;
@@ -34,6 +38,16 @@ namespace x {
 
     constexpr auto None            = nullptr;
     constexpr std::nullopt_t Empty = std::nullopt;
+
+    // Most used STL objects included for convenience
+    using std::array;
+    using std::make_shared;
+    using std::make_unique;
+    using std::shared_ptr;
+    using std::unique_ptr;
+    using std::unordered_map;
+    using std::vector;
+    using std::weak_ptr;
 
 #define CAST static_cast
 #define CCAST const_cast
