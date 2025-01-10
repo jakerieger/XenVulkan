@@ -16,6 +16,10 @@ add_library(Xen STATIC
         ${ENGINE}/Vulkan/VulkanContext.cpp
         ${ENGINE}/Vulkan/VulkanDevice.hpp
         ${ENGINE}/Vulkan/VulkanDevice.cpp
+        ${ENGINE}/Vulkan/VulkanPipeline.hpp
+        ${ENGINE}/Vulkan/VulkanPipeline.cpp
+        ${ENGINE}/Vulkan/VulkanPipelineBuilder.hpp
+        ${ENGINE}/Vulkan/VulkanPipelineBuilder.cpp
 )
 
 add_executable(test2_main
