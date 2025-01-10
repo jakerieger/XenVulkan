@@ -13,9 +13,11 @@ namespace x::vk {
     struct QueueFamilyIndices {
         std::optional<u32> graphicsFamily;
         std::optional<u32> presentFamily;
+        std::optional<u32> computeFamily;
 
         [[nodiscard]] bool IsComplete() const {
-            return graphicsFamily.has_value() && presentFamily.has_value();
+            return graphicsFamily.has_value() && presentFamily.has_value() &&
+                   computeFamily.has_value();
         }
     };
 
@@ -54,6 +56,7 @@ namespace x::vk {
         VkDevice _device                 = VK_NULL_HANDLE;
         VkQueue _graphicsQueue           = VK_NULL_HANDLE;
         VkQueue _presentQueue            = VK_NULL_HANDLE;
+        VkQueue _computeQueue            = VK_NULL_HANDLE;
         QueueFamilyIndices _queueFamilyIndices;
     };
 }  // namespace x::vk

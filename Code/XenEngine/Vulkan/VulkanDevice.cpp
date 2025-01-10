@@ -27,12 +27,11 @@ namespace x::vk {
 
         std::vector<VkPhysicalDevice> devices(deviceCount);
         vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
-        auto bestDevice = SelectBestDevice(devices, surface);
+        const auto bestDevice = SelectBestDevice(devices, surface);
         if (!bestDevice) { Panic("No suitable GPU found."); }
         _physicalDevice     = bestDevice;
         _queueFamilyIndices = FindQueueFamilies(bestDevice, surface);
 
-        if (_physicalDevice == VK_NULL_HANDLE) { Panic("Failed to find a suitable GPU"); }
         printf("Found usable GPU\n");
     }
 
@@ -42,7 +41,8 @@ namespace x::vk {
         // queues end up being from the same family
         std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
         std::set<u32> uniqueQueueFamilies = {_queueFamilyIndices.graphicsFamily.value(),
-                                             _queueFamilyIndices.presentFamily.value()};
+                                             _queueFamilyIndices.presentFamily.value(),
+                                             _queueFamilyIndices.computeFamily.value()};
 
         // Queue priority determines scheduling behavior. A value of 1.0 gives
         // our queues the highest priority possible
@@ -59,6 +59,7 @@ namespace x::vk {
         // requesting features the device doesn't support will cause device creation to fail
         VkPhysicalDeviceFeatures deviceFeatures {};
         deviceFeatures.geometryShader = VK_TRUE;  // We'll need this for advanced rendering
+        deviceFeatures.shaderStorageBufferArrayDynamicIndexing = VK_TRUE;  // Enable for compute
 
         // Main device creation info structure
         VulkanStruct<VkDeviceCreateInfo> createInfo;
@@ -80,6 +81,7 @@ namespace x::vk {
         // one queue per family
         vkGetDeviceQueue(_device, _queueFamilyIndices.graphicsFamily.value(), 0, &_graphicsQueue);
         vkGetDeviceQueue(_device, _queueFamilyIndices.presentFamily.value(), 0, &_presentQueue);
+        vkGetDeviceQueue(_device, _queueFamilyIndices.computeFamily.value(), 0, &_computeQueue);
     }
 
     struct DeviceScore {
@@ -146,8 +148,8 @@ namespace x::vk {
         }
 
         // Score based on device limits
-        score +=
-          deviceProperties.limits.maxImageDimension2D / 4096;  // Reward higher texture dimensions
+        score += CAST<i32>(deviceProperties.limits.maxImageDimension2D /
+                           4096);  // Reward higher texture dimensions
 
         // Score based on memory size (if available)
         VkPhysicalDeviceMemoryProperties memProperties;
@@ -161,6 +163,12 @@ namespace x::vk {
         }
         score +=
           static_cast<int>(totalMemory / (1024 * 1024 * 1024));  // Add points per GB of memory
+
+        // Add score for dedicated compute queue
+        if (indices.computeFamily.has_value() &&
+            indices.computeFamily.value() != indices.graphicsFamily.value()) {
+            score += 500;  // Bonus points for dedicated compute queue
+        }
 
         return score;
     }
@@ -195,6 +203,15 @@ namespace x::vk {
         for (u32 i = 0; i < queueFamilies.size(); i++) {
             // Check for graphics support
             if (queueFamilies[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) { indices.graphicsFamily = i; }
+
+            // Check for compute support
+            if (queueFamilies[i].queueFlags & VK_QUEUE_COMPUTE_BIT) {
+                // Preferably find a dedicated compute queue
+                if (!indices.computeFamily.has_value() ||
+                    !(queueFamilies[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)) {
+                    indices.computeFamily = i;
+                }
+            }
 
             // Check for presentation support
             VkBool32 presentSupport = false;
