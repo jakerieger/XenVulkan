@@ -8,6 +8,7 @@
 #include <vulkan/vulkan_core.h>
 #include "Types.hpp"
 #include "Panic.inl"
+#include "VulkanDevice.hpp"
 #include "VulkanPipeline.hpp"
 #include "VulkanStruct.hpp"
 
@@ -77,7 +78,7 @@ namespace x::vk {
         // Render pass configuration
         VulkanPipelineBuilder& SetRenderPass(VkRenderPass renderPass, u32 subpass = 0);
 
-        VulkanPipeline Build(VkDevice device) const;
+        VulkanPipeline Build(VulkanDevice* device) const;
 
     private:
         void InitializeDefaults();

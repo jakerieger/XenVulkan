@@ -158,10 +158,10 @@ namespace x::vk {
         return *this;
     }
 
-    VulkanPipeline VulkanPipelineBuilder::Build(VkDevice device) const {
+    VulkanPipeline VulkanPipelineBuilder::Build(VulkanDevice* device) const {
         if (!Validate()) Panic("Invalid pipeline configuration.");
 
-        auto pipeline = VulkanPipeline(device);
+        auto pipeline = VulkanPipeline(device->GetLogicalDevice());
 
         VulkanStruct<VkPipelineDynamicStateCreateInfo> dynamicState;
         if (!_dynamicStates.empty()) {
@@ -187,7 +187,7 @@ namespace x::vk {
         pipelineInfo.basePipelineIndex   = -1;
 
         VkPipeline createdPipeline;
-        if (vkCreateGraphicsPipelines(device,
+        if (vkCreateGraphicsPipelines(device->GetLogicalDevice(),
                                       VK_NULL_HANDLE,
                                       1,
                                       &pipelineInfo,
