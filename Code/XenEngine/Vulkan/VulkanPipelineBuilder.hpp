@@ -47,13 +47,15 @@ namespace x::vk {
 
         // Viewport and scissor configuration
         VulkanPipelineBuilder& SetViewport(const VkViewport& viewport, const VkRect2D& scissor);
-        VulkanPipelineBuilder& SetDynamicViewportAndScissor(u32 viewportCount = 1);
+        VulkanPipelineBuilder& SetDynamicViewportAndScissor(u32 count = 1);
 
         // Rasterization configuration
         VulkanPipelineBuilder& SetRasterizer(VkPolygonMode polygonMode = VK_POLYGON_MODE_FILL,
                                              VkCullModeFlags cullMode  = VK_CULL_MODE_BACK_BIT,
                                              VkFrontFace frontFace     = VK_FRONT_FACE_CLOCKWISE,
                                              f32 lineWidth             = 1.0f);
+
+        VulkanPipelineBuilder& SetRasterizerDepthBias(bool depthBias, f32 depthBiasClamp);
 
         // Multisampling configuration
         VulkanPipelineBuilder&
@@ -75,7 +77,7 @@ namespace x::vk {
         // Render pass configuration
         VulkanPipelineBuilder& SetRenderPass(VkRenderPass renderPass, u32 subpass = 0);
 
-        VulkanPipeline Build(VkDevice device);
+        VulkanPipeline Build(VkDevice device) const;
 
     private:
         void InitializeDefaults();

@@ -20,6 +20,8 @@ add_library(Xen STATIC
         ${ENGINE}/Vulkan/VulkanPipeline.cpp
         ${ENGINE}/Vulkan/VulkanPipelineBuilder.hpp
         ${ENGINE}/Vulkan/VulkanPipelineBuilder.cpp
+        ${ENGINE}/Vulkan/VulkanSwapChain.hpp
+        ${ENGINE}/Vulkan/VulkanSwapChain.cpp
 )
 
 add_executable(test2_main

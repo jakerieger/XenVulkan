@@ -15,11 +15,7 @@ int main() {
     auto device  = context->GetDevice()->GetLogicalDevice();
 
     // Test pipeline builder
-    auto builder  = VulkanPipelineBuilder();
-    auto pipeline = builder.SetMultisampling(VK_SAMPLE_COUNT_4_BIT)
-                      .SetDynamicViewportAndScissor(1)
-                      .SetViewport({0, 0, 800, 600}, {0, 0, 800, 600})
-                      .Build(device);
+    auto builder = VulkanPipelineBuilder();
 
     while (!window.ShouldClose()) {
         window.PollEvents();
