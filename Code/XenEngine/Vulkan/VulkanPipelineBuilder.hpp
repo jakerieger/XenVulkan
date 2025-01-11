@@ -34,7 +34,8 @@ namespace x::vk {
         // Shader stage configuration
         // TODO: Rework the shader system and integrate that here, for now this won't do anything
         VulkanPipelineBuilder& AddShaderStage(VkShaderStageFlagBits stage,
-                                              const VulkanShader& shader);
+                                              VkShaderModule shader,
+                                              cstr entryPoint = "main");
 
         // Vertex input configuration
         VulkanPipelineBuilder&

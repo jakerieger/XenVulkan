@@ -34,7 +34,6 @@ target_link_libraries(Xen PRIVATE
         glm::glm-header-only
         glfw
         Vulkan::Vulkan
-        xFX
 )
 
 target_link_libraries(test2_main PRIVATE
@@ -42,5 +41,4 @@ target_link_libraries(test2_main PRIVATE
         glm::glm-header-only
         glfw
         Vulkan::Vulkan
-        xFX
 )

@@ -12,7 +12,15 @@ namespace x::vk {
 
     // TODO: Ignore this for now, I need to rework my shader system
     VulkanPipelineBuilder& VulkanPipelineBuilder::AddShaderStage(VkShaderStageFlagBits stage,
-                                                                 const VulkanShader& shader) {
+                                                                 VkShaderModule shader,
+                                                                 cstr entryPoint) {
+        VulkanStruct<VkPipelineShaderStageCreateInfo> createInfo;
+        createInfo.stage               = stage;
+        createInfo.module              = shader;
+        createInfo.pName               = entryPoint;
+        createInfo.pSpecializationInfo = None;
+        _shaderStages.push_back(createInfo);
+
         return *this;
     }
 
